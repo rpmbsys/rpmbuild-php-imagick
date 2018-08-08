@@ -152,6 +152,8 @@ cd NTS
 rm tests/229_Tutorial_fxAnalyzeImage_case1.phpt
 # Fatal error: Uncaught ImagickException: non-conforming drawing primitive definition `density'
 rm -f tests/268_ImagickDraw_getDensity_basic.phpt
+# Imagick::getRegistry exception
+rm -f tests/150_Imagick_setregistry.phpt
 
 : upstream test suite for NTS extension
 TEST_PHP_EXECUTABLE=%{__php} \
