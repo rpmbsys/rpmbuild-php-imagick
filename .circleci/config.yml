@@ -38,9 +38,12 @@ jobs:
             git submodule sync
             git submodule update --init
       - run:
-          name: Start docker services for rpmbuild
+          name: Pull docker services images
           command: |
             docker-compose -f rpmbuild/docker-compose.yml pull
+      - run:
+          name: Start docker services for rpmbuild
+          command: |
             docker-compose -f rpmbuild/docker-compose.yml up -d
           background: true
           no_output_timeout: 2h
@@ -165,9 +168,12 @@ jobs:
             git submodule sync
             git submodule update --init
       - run:
-          name: Start docker services for rpmbuild
+          name: Pull docker services images
           command: |
             docker-compose -f rpmbuild/docker-compose.yml pull
+      - run:
+          name: Start docker services for rpmbuild
+          command: |
             docker-compose -f rpmbuild/docker-compose.yml up -d
           background: true
           no_output_timeout: 2h
