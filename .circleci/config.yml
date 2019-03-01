@@ -28,7 +28,6 @@ jobs:
           command: |
             docker-compose -f rpmbuild/docker-compose.yml pull
             docker-compose -f rpmbuild/docker-compose.bintray.yml pull
-            docker-compose -f rpmbuild/docker-compose.refresh.yml pull
       - run:
           name: Start docker services for rpmbuild
           command: docker-compose -f rpmbuild/docker-compose.yml up -d
@@ -88,7 +87,7 @@ jobs:
           no_output_timeout: 2h
       - run:
           name: Build Docker images (PHP 5)
-          command: docker-compose -f docker-compose.php5.yml build --no-cache
+          command: docker-compose -f docker-compose.php5.yml build --no-cache --pull
       - run:
           name: Build RPM packages (PHP 5)
           command: docker-compose -f docker-compose.php5.yml up
@@ -140,7 +139,7 @@ jobs:
           no_output_timeout: 2h
       - run:
           name: Build Docker images (PHP 7.3)
-          command: docker-compose -f docker-compose.php73.yml build --no-cache
+          command: docker-compose -f docker-compose.php73.yml build --no-cache --pull
       - run:
           name: Build RPM packages (PHP 7.3)
           command: docker-compose -f docker-compose.php73.yml up
