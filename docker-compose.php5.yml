@@ -1,27 +1,6 @@
 version: "3.5"
 services:
-  centos7imagickbuildbasephp5:
-    networks:
-      - buildnet
-    build:
-      context: .
-      dockerfile: Dockerfile.base
-      args:
-        image: build-php5
-      network: buildnet
-    image: aursu/peclbuild:7-imagick-base-php5
-  centos6imagickbuildbasephp5:
-    networks:
-      - buildnet
-    build:
-      context: .
-      dockerfile: Dockerfile.base
-      args:
-        centos: 6
-        image: build-php5
-      network: buildnet
-    image: aursu/peclbuild:6-imagick-base-php5
-  centos7imagickbuildphp5:
+  centos7imagickphp5:
     volumes:
       - rpms:/home/centos/rpmbuild/SRPMS
       - rpm7:/home/centos/rpmbuild/RPMS
@@ -29,8 +8,7 @@ services:
       context: .
       args:
         image: imagick-base-php5
-    image: aursu/peclbuild:7-imagick-php5
-  centos6imagickbuildphp5:
+  centos6imagickphp5:
     volumes:
       - rpms:/home/centos/rpmbuild/SRPMS
       - rpm6:/home/centos/rpmbuild/RPMS
@@ -39,12 +17,6 @@ services:
       args:
         centos: 6
         image: imagick-base-php5
-    image: aursu/peclbuild:6-imagick-php5
-
-networks:
-  buildnet:
-    external: true
-    name: buildnet
 
 volumes:
   rpms:
