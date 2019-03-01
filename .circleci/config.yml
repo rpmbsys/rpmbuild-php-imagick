@@ -36,7 +36,7 @@ jobs:
           no_output_timeout: 2h
       - run:
           name: Build PHP Docker images
-          command: docker-compose build --no-cache
+          command: docker-compose build --no-cache --pull
       - run:
           name: Build RPM packages
           command: docker-compose up
