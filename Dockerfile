@@ -3,7 +3,7 @@ ARG image=php-7.1
 
 FROM aursu/pearbuild:${centos}-${image}
 
-RUN yum -y --disablerepo=* --enablerepo=bintray-custom install \
+RUN yum -y --enablerepo=bintray-custom install \
         ImageMagick-devel \
     && yum clean all && rm -rf /var/cache/yum
 
