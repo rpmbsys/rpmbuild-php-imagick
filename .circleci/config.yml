@@ -4,7 +4,7 @@ jobs:
     machine:
       docker_layer_caching: true
     environment:
-      IMAGICK_VERSION: 6.9.10.28-1
+      BINTRAY_REPO: php71custom
       PACKAGE_VCS_URL: https://github.com/aursu/rpmbuild-php-imagick
     steps:
       - run:
