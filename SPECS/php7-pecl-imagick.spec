@@ -1,13 +1,12 @@
-%{!?php_inidir:  %global php_inidir   %{_sysconfdir}/php.d}
-%{!?__pecl:      %global __pecl       %{_bindir}/pecl}
-%{!?__php:       %global __php        %{_bindir}/php}
+%{!?php_inidir:  %global php_inidir   %{_sysconfdir}/php7/php.d}
+%{!?__pecl:      %global __pecl       %{_bindir}/pecl7}
+%{!?__php:       %global __php        %{_bindir}/php7}
 
 %global pecl_name  imagick
 %global ini_name   40-%{pecl_name}.ini
-%global with_zts   0%{?__ztsphp:1}
 
 Summary:        Provides a wrapper to the ImageMagick library
-Name:           php-pecl-%pecl_name
+Name:           php7-pecl-%pecl_name
 Version:        3.4.3
 Release:        2%{?dist}
 License:        PHP
@@ -15,8 +14,10 @@ Group:          Development/Libraries
 URL:            http://pecl.php.net/package/%pecl_name
 
 Source0:        http://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
-BuildRequires:  php-pear >= 1.4.7
-BuildRequires:  php-devel >= 5.1.3, ImageMagick-devel >= 6.2.4
+BuildRequires:  php7-pear >= 1.4.7
+BuildRequires:  php7-devel
+BuildConflicts: php-devel
+BuildRequires:  ImageMagick-devel >= 6.2.4
 
 Requires:       php(zend-abi) = %{php_zend_api}
 Requires:       php(api) = %{php_core_api}
@@ -25,6 +26,8 @@ Requires(postun): %{__pecl}
 
 Provides:       php-%pecl_name               = %{version}
 Provides:       php-%pecl_name%{?_isa}       = %{version}
+Provides:       php7-%pecl_name               = %{version}
+Provides:       php7-%pecl_name%{?_isa}       = %{version}
 Provides:       php-pecl(%pecl_name)         = %{version}
 Provides:       php-pecl(%pecl_name)%{?_isa} = %{version}
 
@@ -45,7 +48,7 @@ ImageMagick API.
 Summary:       %{pecl_name} extension developer files (header)
 Group:         Development/Libraries
 Requires:      %{name}%{?_isa} = %{version}-%{release}
-Requires:      %{?scl_prefix}php-devel%{?_isa}
+Requires:      %{?scl_prefix}php7-devel%{?_isa}
 
 %description devel
 These are the files needed to compile programs using %{pecl_name} extension.
@@ -93,25 +96,14 @@ imagick.skip_version_check=1
 ;imagick.progress_monitor=0
 EOF
 
-%if %{with_zts}
-cp -r NTS ZTS
-%endif
 
 
 %build
 : Standard NTS build
 cd NTS
-%{_bindir}/phpize
-%configure --with-imagick=%{prefix} --with-php-config=%{_bindir}/php-config
+%{_bindir}/phpize7
+%configure --with-imagick=%{prefix} --with-php-config=%{_bindir}/php7-config
 make %{?_smp_mflags}
-
-%if %{with_zts}
-cd ../ZTS
-: ZTS build
-%{_bindir}/zts-phpize
-%configure --with-imagick=%{prefix} --with-php-config=%{_bindir}/zts-php-config
-make %{?_smp_mflags}
-%endif
 
 
 %install
@@ -122,11 +114,6 @@ install -D -m 644 %{ini_name} %{buildroot}%{php_inidir}/%{ini_name}
 
 # Install XML package description
 install -D -p -m 644 package.xml %{buildroot}%{pecl_xmldir}/%{name}.xml
-
-%if %{with_zts}
-make install INSTALL_ROOT=%{buildroot} -C ZTS
-install -D -m 644 %{ini_name} %{buildroot}%{php_ztsinidir}/%{ini_name}
-%endif
 
 # Test & Documentation
 cd NTS
@@ -161,15 +148,6 @@ TEST_PHP_ARGS="-n -d extension=%{buildroot}%{php_extdir}/%{pecl_name}.so" \
 NO_INTERACTION=1 \
 %{__php} -n run-tests.php --show-diff
 
-%if %{with_zts}
-: simple module load test for ZTS extension
-cd ../ZTS
-%{__ztsphp} --no-php-ini \
-    --define extension_dir=%{buildroot}%{php_ztsextdir} \
-    --define extension=%{pecl_name}.so \
-    --modules | grep %{pecl_name}
-%endif
-
 %post
 %{pecl_install} %{pecl_xmldir}/%{name}.xml >/dev/null || :
 
@@ -185,23 +163,13 @@ fi
 %config(noreplace) %{php_inidir}/%{ini_name}
 %{php_extdir}/%{pecl_name}.so
 
-%if %{with_zts}
-%config(noreplace) %{php_ztsinidir}/%{ini_name}
-%{php_ztsextdir}/%{pecl_name}.so
-%endif
-
-
 %files devel
 %doc %{pecl_testdir}/%{pecl_name}
 %{php_incldir}/ext/%{pecl_name}
 
-%if %{with_zts}
-%{php_ztsincldir}/ext/%{pecl_name}
-%endif
-
 %changelog
-* Wed Aug  8 2018 Alexander Ursu <alexander.ursu@gmail.com> - 3.4.3-2
-- Build for CentOS
+* Thu Aug 24 2017 Remi Collet <remi@remirepo.net> - 3.4.3-2
+- rebuild for new ImageMagick
 
 * Mon Aug 14 2017 Remi Collet <remi@remirepo.net> - 3.4.3-1
 - update to 3.4.3
