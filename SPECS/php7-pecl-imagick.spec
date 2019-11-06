@@ -7,8 +7,8 @@
 
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php7-pecl-%pecl_name
-Version:        3.4.3
-Release:        2%{?dist}
+Version:        3.4.4
+Release:        1%{?dist}
 License:        PHP
 Group:          Development/Libraries
 URL:            http://pecl.php.net/package/%pecl_name
@@ -32,12 +32,6 @@ Provides:       php-pecl(%pecl_name)         = %{version}
 Provides:       php-pecl(%pecl_name)%{?_isa} = %{version}
 
 Conflicts:      php-pecl-gmagick
-
-%if 0%{?fedora} < 20 && 0%{?rhel} < 7
-# Filter private shared
-%{?filter_provides_in: %filter_provides_in %{_libdir}/.*\.so$}
-%{?filter_setup}
-%endif
 
 %description
 %pecl_name is a native php extension to create and modify images using the
@@ -168,6 +162,10 @@ fi
 %{php_incldir}/ext/%{pecl_name}
 
 %changelog
+* Tue May  7 2019 Remi Collet <remi@remirepo.net> - 3.4.4-1
+- update to 3.4.4
+- drop patch merged upstream
+
 * Thu Aug 24 2017 Remi Collet <remi@remirepo.net> - 3.4.3-2
 - rebuild for new ImageMagick
 
