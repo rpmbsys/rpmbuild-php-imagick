@@ -69,6 +69,12 @@ fi
 
 cd NTS
 
+%patch0 -p1
+%patch1 -p1
+%if "%{php_version}" > "7.4"
+%patch2 -p1
+%endif
+
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
    : Error: Upstream version is ${extver}, expecting %{version}%{?prever}.
