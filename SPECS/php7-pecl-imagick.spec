@@ -8,12 +8,17 @@
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php7-pecl-%pecl_name
 Version:        3.4.4
-Release:        1%{?dist}
+Release:        3%{?dist}
 License:        PHP
 Group:          Development/Libraries
 URL:            http://pecl.php.net/package/%pecl_name
 
 Source0:        http://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
+
+Patch0:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/290.patch
+Patch1:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/291.patch
+Patch2:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/296.patch
+
 BuildRequires:  php7-pear >= 1.4.7
 BuildRequires:  php7-devel
 BuildConflicts: php-devel
@@ -66,6 +71,12 @@ then : "Font files detected!"
 fi
 
 cd NTS
+
+%patch0 -p1
+%patch1 -p1
+%if "%{php_version}" > "7.4"
+%patch2 -p1
+%endif
 
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
@@ -162,6 +173,9 @@ fi
 %{php_incldir}/ext/%{pecl_name}
 
 %changelog
+* Thu Oct 03 2019 Remi Collet <remi@remirepo.net> - 3.4.4-3
+- rebuild for https://fedoraproject.org/wiki/Changes/php74
+
 * Tue May  7 2019 Remi Collet <remi@remirepo.net> - 3.4.4-1
 - update to 3.4.4
 - drop patch merged upstream

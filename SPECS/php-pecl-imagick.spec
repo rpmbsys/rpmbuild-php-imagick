@@ -15,6 +15,11 @@ Group:          Development/Libraries
 URL:            http://pecl.php.net/package/%pecl_name
 
 Source0:        http://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
+
+Patch0:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/290.patch
+Patch1:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/291.patch
+Patch2:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/296.patch
+
 BuildRequires:  php-pear >= 1.4.7
 BuildRequires:  php-devel >= 5.1.3, ImageMagick-devel >= 6.2.4
 
