@@ -1,6 +1,6 @@
 version: "3.5"
 services:
-  centos7imagickphp74:
+  centos7imagickphp80:
     volumes:
       - rpms:/home/centos/rpmbuild/SRPMS
       - rpm7:/home/centos/rpmbuild/RPMS
@@ -8,8 +8,8 @@ services:
       context: .
       args:
         centos: $OS7
-        image: php-7.4
-  centos8imagickphp74:
+        image: php-8.0
+  centos8imagickphp80:
     volumes:
       - rpms:/home/centos/rpmbuild/SRPMS
       - rpm8:/home/centos/rpmbuild/RPMS
@@ -18,7 +18,7 @@ services:
       dockerfile: Dockerfile.el8
       args:
         centos: $OS8
-        image: php-7.4
+        image: php-8.0
 
 volumes:
   rpms:

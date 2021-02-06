@@ -1,7 +1,7 @@
 version: 2.1
 
 orbs:
-  docker-rpmbuild: aursu/rpmbuild@1.1.0
+  docker-rpmbuild: aursu/rpmbuild@1.1.6
 
 workflows:
   igbinarybuild:
@@ -9,36 +9,34 @@ workflows:
       - docker-rpmbuild/build:
           name: centos7imagick
           build_service: centos7imagick
-          bintray_uploader: centos7bintray
-      - docker-rpmbuild/build:
-          name: centos7imagickrel
-          build_service: centos7imagickrel
+          bintray-repo: php74custom
           bintray_uploader: centos7bintray
       - docker-rpmbuild/build:
           name: centos8imagick
           build_service: centos8imagick
-          bintray_uploader: centos8bintray
-      - docker-rpmbuild/build:
-          name: centos8imagickrel
-          build_service: centos8imagickrel
+          bintray-repo: php74custom
           bintray_uploader: centos8bintray
       - docker-rpmbuild/build:
           name: centos7imagickphp73
           build_file: docker-compose.php73.yml
           build_service: centos7imagickphp73
+          bintray-repo: php73custom
           bintray_uploader: centos7bintray
       - docker-rpmbuild/build:
           name: centos8imagickphp73
           build_file: docker-compose.php73.yml
           build_service: centos8imagickphp73
+          bintray-repo: php73custom
           bintray_uploader: centos8bintray
       - docker-rpmbuild/build:
-          name: centos7imagickphp74
-          build_file: docker-compose.php74.yml
-          build_service: centos7imagickphp74
+          name: centos7imagickphp80
+          build_file: docker-compose.php80.yml
+          build_service: centos7imagickphp80
+          bintray-repo: php8custom
           bintray_uploader: centos7bintray
       - docker-rpmbuild/build:
-          name: centos8imagickphp74
-          build_file: docker-compose.php74.yml
-          build_service: centos8imagickphp74
+          name: centos8imagickphp80
+          build_file: docker-compose.php80.yml
+          build_service: centos8imagickphp80
+          bintray-repo: php8custom
           bintray_uploader: centos8bintray
