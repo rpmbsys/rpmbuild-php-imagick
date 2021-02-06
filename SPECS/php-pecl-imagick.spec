@@ -9,18 +9,18 @@
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
 Version:        3.4.4
-Release:        2%{?dist}
+Release:        13%{?dist}
 License:        PHP
 Group:          Development/Libraries
 URL:            http://pecl.php.net/package/%pecl_name
 
 Source0:        http://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
 
-Patch0:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/290.patch
-Patch1:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/291.patch
-Patch2:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/296.patch
-
-Patch3:        %{pecl_name}-php8.patch
+Patch0:        %{pecl_name}-php8.patch
+Patch1:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/346.patch
+Patch2:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/347.patch
+Patch3:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/348.patch
+Patch4:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/350.patch
 
 BuildRequires:  php-pear >= 1.4.7
 BuildRequires:  php-devel >= 5.1.3, ImageMagick-devel >= 6.2.4
@@ -71,12 +71,11 @@ fi
 
 cd NTS
 
-%patch0 -p1
-%patch1 -p1
-%if "%{php_version}" > "7.4"
-%patch2 -p1
-%endif
-%patch3 -p1 -b .up
+%patch0 -p1 -b .up
+%patch1 -p1 -b .pr346
+%patch2 -p1 -b .pr347
+%patch3 -p1 -b .pr348
+%patch4 -p1 -b .pr350
 
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
@@ -208,8 +207,15 @@ fi
 %endif
 
 %changelog
-* Sat Feb  6 2021 Alexander Ursu <alexander.ursu@gmail.com> - 3.4.4-2
-- add patche for PHP 8 from upstream
+* Mon Sep 28 2020 Remi Collet <remi@remirepo.net> - 3.4.4-13
+- add patch for test suite with PHP 8 from
+  https://github.com/Imagick/imagick/pull/350 - simpler warning
+
+* Fri Sep  4 2020 Remi Collet <remi@remirepo.net> - 3.4.4-12
+- add patches for PHP 8 from upstream and
+  https://github.com/Imagick/imagick/pull/346 - SPL always there
+  https://github.com/Imagick/imagick/pull/347 - thread limit per request
+  https://github.com/Imagick/imagick/pull/348 - single thread
 
 * Tue May  7 2019 Remi Collet <remi@remirepo.net> - 3.4.4-1
 - update to 3.4.4
