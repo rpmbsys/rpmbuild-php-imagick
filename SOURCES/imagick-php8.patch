@@ -1,0 +1,1309 @@
+diff --git a/imagick.c b/imagick.c
+index 8e58afe..1e6d174 100644
+--- a/imagick.c
++++ b/imagick.c
+@@ -40,7 +40,11 @@
+ ZEND_DECLARE_MODULE_GLOBALS(imagick)
+ 
+ #ifdef IMAGICK_WITH_KERNEL
+-HashTable* php_imagickkernel_get_debug_info(zval *obj, int *is_temp TSRMLS_DC); /* {{{ */
++	#if PHP_VERSION_ID >= 80000
++	HashTable* php_imagickkernel_get_debug_info(zend_object *obj, int *is_temp TSRMLS_DC); /* {{{ */
++	#else
++	HashTable* php_imagickkernel_get_debug_info(zval *obj, int *is_temp TSRMLS_DC); /* {{{ */
++	#endif
+ #endif
+ 
+ zend_class_entry *php_imagick_sc_entry;
+@@ -429,6 +433,14 @@ PHP_IMAGICK_API zend_class_entry *php_imagickpixel_get_class_entry()
+ 		ZEND_ARG_INFO(0, threshold)
+ 	ZEND_END_ARG_INFO()
+ 
++#if PHP_IMAGICK_HAVE_HOUGHLINE
++	ZEND_BEGIN_ARG_INFO_EX(imagick_houghlineimage_args, 0, 0, 3)
++		ZEND_ARG_INFO(0, width)
++		ZEND_ARG_INFO(0, height)
++	    ZEND_ARG_INFO(0, threshold)
++	ZEND_END_ARG_INFO()
++#endif
++
+ 	ZEND_BEGIN_ARG_INFO_EX(imagick_segmentimage_args, 0, 0, 3)
+ 		ZEND_ARG_INFO(0, COLORSPACE)
+ 		ZEND_ARG_INFO(0, cluster_threshold)
+@@ -2412,6 +2424,9 @@ static zend_function_entry php_imagick_class_methods[] =
+ 	PHP_ME(imagick, sparsecolorimage, imagick_sparsecolorimage_args, ZEND_ACC_PUBLIC)
+ 	PHP_ME(imagick, remapimage, imagick_remapimage_args, ZEND_ACC_PUBLIC)
+ #endif
++#if PHP_IMAGICK_HAVE_HOUGHLINE
++	PHP_ME(imagick, houghlineimage, imagick_houghlineimage_args, ZEND_ACC_PUBLIC)
++#endif
+ #if MagickLibVersion > 0x646
+ 	PHP_ME(imagick, exportimagepixels, imagick_exportimagepixels_args, ZEND_ACC_PUBLIC)
+ #endif
+@@ -2441,7 +2456,7 @@ static zend_function_entry php_imagick_class_methods[] =
+ 	PHP_ME(imagick, smushimages, imagick_smushimages_args, ZEND_ACC_PUBLIC)
+ #endif
+ 	PHP_ME(imagick, __construct, imagick_construct_args, ZEND_ACC_PUBLIC|ZEND_ACC_CTOR)
+-	PHP_ME(imagick, __tostring, NULL, ZEND_ACC_PUBLIC)
++	PHP_ME(imagick, __tostring, imagick_zero_args, ZEND_ACC_PUBLIC)
+ #if PHP_VERSION_ID >= 50600
+ 	PHP_ME(imagick, count, imagick_count_args, ZEND_ACC_PUBLIC)
+ #else
+@@ -2657,7 +2672,7 @@ static zend_function_entry php_imagick_class_methods[] =
+ 	PHP_ME(imagick, getimagegamma, imagick_zero_args, ZEND_ACC_PUBLIC)
+ 	PHP_ME(imagick, getimagegreenprimary, imagick_zero_args, ZEND_ACC_PUBLIC)
+ 	PHP_ME(imagick, getimageheight, imagick_zero_args, ZEND_ACC_PUBLIC)
+-	PHP_ME(imagick, getimagehistogram, NULL, ZEND_ACC_PUBLIC)
++	PHP_ME(imagick, getimagehistogram, imagick_zero_args, ZEND_ACC_PUBLIC)
+ 	PHP_ME(imagick, getimageinterlacescheme, imagick_zero_args, ZEND_ACC_PUBLIC)
+ 	PHP_ME(imagick, getimageiterations, imagick_zero_args, ZEND_ACC_PUBLIC)
+ #if MagickLibVersion < 0x700
+@@ -3262,6 +3277,10 @@ PHP_INI_BEGIN()
+ 	STD_PHP_INI_ENTRY("imagick.locale_fix", "0", PHP_INI_ALL, OnUpdateBool, locale_fix, zend_imagick_globals, imagick_globals)
+ 	STD_PHP_INI_ENTRY("imagick.skip_version_check", "0", PHP_INI_ALL, OnUpdateBool, skip_version_check, zend_imagick_globals, imagick_globals)
+ 	STD_PHP_INI_ENTRY("imagick.progress_monitor", "0", PHP_INI_SYSTEM, OnUpdateBool, progress_monitor, zend_imagick_globals, imagick_globals)
++
++	STD_PHP_INI_ENTRY("imagick.set_single_thread", "0", PHP_INI_SYSTEM, OnUpdateBool, set_single_thread, zend_imagick_globals, imagick_globals)
++	STD_PHP_INI_ENTRY("imagick.shutdown_sleep_count",  "10", PHP_INI_ALL, OnUpdateLong, shutdown_sleep_count, zend_imagick_globals, imagick_globals)
++
+ PHP_INI_END()
+ 
+ static void php_imagick_init_globals(zend_imagick_globals *imagick_globals)
+@@ -3269,12 +3288,21 @@ static void php_imagick_init_globals(zend_imagick_globals *imagick_globals)
+ 	imagick_globals->locale_fix = 0;
+ 	imagick_globals->progress_monitor = 0;
+ 	imagick_globals->skip_version_check = 0;
++	imagick_globals->set_single_thread = 0;
++	// 10 is magick number, that seems to be enough.
++	imagick_globals->shutdown_sleep_count = 10;
+ }
+ 
+ 
++#if PHP_VERSION_ID >= 80000
++static int php_imagick_count_elements(zend_object *object, im_long *count) /* {{{ */
++{
++	php_imagick_object *intern= php_imagick_fetch_object(object);
++#else
+ static int php_imagick_count_elements(zval *object, im_long *count TSRMLS_DC) /* {{{ */
+ {
+ 	php_imagick_object *intern= Z_IMAGICK_P(object);
++#endif
+ 
+ 	if (intern->magick_wand) {
+ 		*count = MagickGetNumberImages(intern->magick_wand);
+@@ -3283,6 +3311,71 @@ static int php_imagick_count_elements(zval *object, im_long *count TSRMLS_DC) /*
+ 	return FAILURE;
+ }
+ 
++
++#if PHP_VERSION_ID >= 80000
++static zval *php_imagick_read_property(zend_object *object, zend_string *member, int type, void **cache_slot, zval *rv)
++{
++	int ret;
++	php_imagick_object *intern;
++	zval *retval = NULL;
++    const zend_object_handlers *std_hnd;
++
++
++	std_hnd = zend_get_std_object_handlers();
++
++	ret = std_hnd->has_property(object, member, type, cache_slot TSRMLS_CC);
++
++	if (ret) {
++		//TODO - this would allow better immutability
++		//ZVAL_COPY_VALUE(retval, std_hnd->read_property(object, member, type, cache_slot, rv TSRMLS_CC));
++		retval = std_hnd->read_property(object, member, type, cache_slot, rv TSRMLS_CC);
++	}
++	else {
++
++		intern = php_imagick_fetch_object(object);
++		/* Do we have any images? */
++		if (MagickGetNumberImages(intern->magick_wand)) {
++
++			//TODO - this seems redundant
++			/* Is this overloaded? */
++			if (!strcmp(ZSTR_VAL(member), "width") ||
++				!strcmp(ZSTR_VAL(member), "height") ||
++				!strcmp(ZSTR_VAL(member), "format")) {
++
++				if (!strcmp(ZSTR_VAL(member), "width")) {
++					retval = rv;
++					ZVAL_LONG(retval, MagickGetImageWidth(intern->magick_wand));
++				} else if (!strcmp(ZSTR_VAL(member), "height")) {
++					retval = rv;
++					ZVAL_LONG(retval, MagickGetImageHeight(intern->magick_wand));
++				} else if (!strcmp(ZSTR_VAL(member), "format")) {
++					char *format = MagickGetImageFormat(intern->magick_wand);
++
++					if (format) {
++						retval = rv;
++						ZVAL_STRING(retval, format);
++						IMAGICK_FREE_MAGICK_MEMORY(format);
++					} else {
++						retval = rv;
++						ZVAL_STRING(retval, "");
++					}
++				}
++			}
++		}
++	}
++
++	if (!retval) {
++		//TODO - why is the error silent - it would be a small BC break
++		//to enable the warning. I think it would be the correct thing to do though.
++		//zend_error(E_NOTICE,"Undefined property: \Imagick::$%s", Z_STRVAL_P(member));
++		retval = &EG(uninitialized_zval);
++	}
++
++	return retval;
++}
++
++#else // PHP_VERSION_ID >= 80000
++
+ #ifdef ZEND_ENGINE_3
+ static zval *php_imagick_read_property(zval *object, zval *member, int type, void **cache_slot, zval *rv TSRMLS_DC)
+ {
+@@ -3434,7 +3527,11 @@ static zval *php_imagick_read_property(zval *object, zval *member, int type, con
+ }
+ #endif
+ 
+-#ifdef ZEND_ENGINE_3
++#endif
++
++#if PHP_VERSION_ID >= 80000
++static zend_object * php_imagick_clone_imagick_object(zend_object *this_ptr)
++#elif PHP_VERSION_ID >= 70000
+ static zend_object * php_imagick_clone_imagick_object(zval *this_ptr TSRMLS_DC)
+ #else
+ static zend_object_value php_imagick_clone_imagick_object(zval *this_ptr TSRMLS_DC)
+@@ -3442,7 +3539,11 @@ static zend_object_value php_imagick_clone_imagick_object(zval *this_ptr TSRMLS_
+ {
+ 	MagickWand *wand_copy = NULL;
+ 	php_imagick_object *new_obj = NULL;
+-#ifdef ZEND_ENGINE_3
++#if PHP_VERSION_ID >= 80000
++	php_imagick_object *old_obj = php_imagick_fetch_object(this_ptr);
++	zend_object * new_zo = php_imagick_object_new_ex(old_obj->zo.ce, &new_obj, 0 TSRMLS_CC);
++	zend_objects_clone_members(&new_obj->zo, &old_obj->zo TSRMLS_CC);
++#elif PHP_VERSION_ID >= 70000
+ 	php_imagick_object *old_obj = Z_IMAGICK_P(this_ptr);
+ 	zend_object * new_zo = php_imagick_object_new_ex(old_obj->zo.ce, &new_obj, 0 TSRMLS_CC);
+ 	zend_objects_clone_members(&new_obj->zo, &old_obj->zo TSRMLS_CC);
+@@ -3466,7 +3567,9 @@ static zend_object_value php_imagick_clone_imagick_object(zval *this_ptr TSRMLS_
+ 	return new_zo;
+ }
+ 
+-#ifdef ZEND_ENGINE_3
++#if PHP_VERSION_ID >= 80000
++static zend_object * php_imagick_clone_imagickdraw_object(zend_object *this_ptr)
++#elif PHP_VERSION_ID >= 70000
+ static zend_object * php_imagick_clone_imagickdraw_object(zval *this_ptr TSRMLS_DC)
+ #else
+ static zend_object_value php_imagick_clone_imagickdraw_object(zval *this_ptr TSRMLS_DC)
+@@ -3474,7 +3577,11 @@ static zend_object_value php_imagick_clone_imagickdraw_object(zval *this_ptr TSR
+ {
+ 	DrawingWand *wand_copy = NULL;
+ 	php_imagickdraw_object *new_obj = NULL;
+-#ifdef ZEND_ENGINE_3
++#if PHP_VERSION_ID >= 80000
++	php_imagickdraw_object *old_obj = php_imagickdraw_fetch_object(this_ptr);
++	zend_object * new_zo = php_imagickdraw_object_new_ex(old_obj->zo.ce, &new_obj, 0 TSRMLS_CC);
++	zend_objects_clone_members(&new_obj->zo, &old_obj->zo TSRMLS_CC);
++#elif PHP_VERSION_ID >= 70000
+ 	php_imagickdraw_object *old_obj = Z_IMAGICKDRAW_P(this_ptr);
+ 	zend_object * new_zo = php_imagickdraw_object_new_ex(old_obj->zo.ce, &new_obj, 0 TSRMLS_CC);
+ 	zend_objects_clone_members(&new_obj->zo, &old_obj->zo TSRMLS_CC);
+@@ -3494,7 +3601,10 @@ static zend_object_value php_imagick_clone_imagickdraw_object(zval *this_ptr TSR
+ 	return new_zo;
+ }
+ 
+-#ifdef ZEND_ENGINE_3
++
++#if PHP_VERSION_ID >= 80000
++static zend_object * php_imagick_clone_imagickpixel_object(zend_object *this_ptr)
++#elif PHP_VERSION_ID >= 70000
+ static zend_object * php_imagick_clone_imagickpixel_object(zval *this_ptr TSRMLS_DC)
+ #else
+ static zend_object_value php_imagick_clone_imagickpixel_object(zval *this_ptr TSRMLS_DC)
+@@ -3502,12 +3612,18 @@ static zend_object_value php_imagick_clone_imagickpixel_object(zval *this_ptr TS
+ {
+ 	PixelWand *wand_copy = NULL;
+ 	php_imagickpixel_object *new_obj = NULL;
+-#ifdef ZEND_ENGINE_3
++
++#if PHP_VERSION_ID >= 80000
++	zend_object *new_zo;
++	php_imagickpixel_object *old_obj = php_imagickpixel_fetch_object(this_ptr);
++	new_zo = php_imagickpixel_object_new_ex(old_obj->zo.ce, &new_obj TSRMLS_CC);
++	zend_objects_clone_members(&new_obj->zo, &old_obj->zo TSRMLS_CC);
++#elif PHP_VERSION_ID >= 70000
+ 	zend_object *new_zo;
+ 	php_imagickpixel_object *old_obj = Z_IMAGICKPIXEL_P(this_ptr);
+ 	new_zo = php_imagickpixel_object_new_ex(old_obj->zo.ce, &new_obj TSRMLS_CC);
+ 	zend_objects_clone_members(&new_obj->zo, &old_obj->zo TSRMLS_CC);
+-#else 
++#else
+ 	php_imagickpixel_object *old_obj = (php_imagickpixel_object *) zend_object_store_get_object(this_ptr TSRMLS_CC);
+ 	zend_object_value new_zo = php_imagickpixel_object_new_ex(old_obj->zo.ce, &new_obj TSRMLS_CC);
+ 	zend_objects_clone_members(&new_obj->zo, new_zo, &old_obj->zo, Z_OBJ_HANDLE_P(this_ptr) TSRMLS_CC);
+@@ -3524,7 +3640,10 @@ static zend_object_value php_imagick_clone_imagickpixel_object(zval *this_ptr TS
+ }
+ 
+ #ifdef IMAGICK_WITH_KERNEL
+-#ifdef ZEND_ENGINE_3
++
++#if PHP_VERSION_ID >= 80000
++static zend_object * php_imagick_clone_imagickkernel_object(zend_object *this_ptr TSRMLS_DC)
++#elif PHP_VERSION_ID >= 70000
+ static zend_object * php_imagick_clone_imagickkernel_object(zval *this_ptr TSRMLS_DC)
+ #else
+ static zend_object_value php_imagick_clone_imagickkernel_object(zval *this_ptr TSRMLS_DC)
+@@ -3533,7 +3652,12 @@ static zend_object_value php_imagick_clone_imagickkernel_object(zval *this_ptr T
+ 	KernelInfo *kernel_info_copy = NULL;
+ 	php_imagickkernel_object *new_obj = NULL;
+ 
+-#ifdef ZEND_ENGINE_3
++#if PHP_VERSION_ID >= 80000
++	zend_object *new_zo;
++	php_imagickkernel_object *old_obj = php_imagickkernel_fetch_object(this_ptr);
++	new_zo = php_imagickkernel_object_new_ex(old_obj->zo.ce, &new_obj TSRMLS_CC);
++	zend_objects_clone_members(&new_obj->zo, &old_obj->zo TSRMLS_CC);
++#elif PHP_VERSION_ID >= 70000
+ 	zend_object *new_zo;
+ 	php_imagickkernel_object *old_obj = Z_IMAGICKKERNEL_P(this_ptr);
+ 	new_zo = php_imagickkernel_object_new_ex(old_obj->zo.ce, &new_obj TSRMLS_CC);
+@@ -3748,6 +3872,10 @@ PHP_MINIT_FUNCTION(imagick)
+ 		checkImagickVersion();
+ 	}
+ 
++	if (IMAGICK_G(set_single_thread)) {
++		MagickSetResourceLimit(ThreadResource, 1);
++	}
++
+ 	return SUCCESS;
+ }
+ 
+@@ -3757,7 +3885,7 @@ PHP_MINFO_FUNCTION(imagick)
+ 
+ #ifdef ZEND_ENGINE_3
+ 	smart_string formats = {0};
+-#else 
++#else
+ 	smart_str formats = {0};
+ #endif
+ 
+@@ -3824,12 +3952,21 @@ PHP_MINFO_FUNCTION(imagick)
+ 
+ PHP_MSHUTDOWN_FUNCTION(imagick)
+ {
++    int i;
++
+ // This suppresses an 'unused parameter' warning.
+ 	(void)type;
+ 
+-
+ 	MagickWandTerminus();
+ 
++    // Sleep for a bit to hopefully allow OpenMP to
++    // shut down the threads it created, and avoid a segfault
++    // This hack won't be needed once everyone is compiling ImageMagick
++    // against a version of OpenMP that has omp_pause_resource_all()
++	for (i = 0; i < 100 && i < IMAGICK_G(shutdown_sleep_count); i += 1) {
++		usleep(1000);
++	}
++
+ #if defined(ZTS) && defined(PHP_WIN32)
+ 	tsrm_mutex_free(imagick_mutex);
+ #endif
+diff --git a/imagick_class.c b/imagick_class.c
+index 164406a..3b041c5 100644
+--- a/imagick_class.c
++++ b/imagick_class.c
+@@ -2488,6 +2488,37 @@ PHP_METHOD(imagick, deskewimage)
+ 	RETURN_TRUE;
+ }
+ 
++
++#if PHP_IMAGICK_HAVE_HOUGHLINE
++/* {{{ proto bool Imagick::houghLineImage(int width, int height, float threshold)
++        Draw hough lines for the image
++
++*/
++PHP_METHOD(imagick, houghlineimage)
++{
++        php_imagick_object *intern;
++        MagickBooleanType status;
++        double threshold;
++        im_long width, height;
++
++        if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "lld", &width, &height, &threshold) == FAILURE) {
++                return;
++        }
++
++        intern = Z_IMAGICK_P(getThis());
++        if (php_imagick_ensure_not_empty (intern->magick_wand) == 0)
++                return;
++
++        status = MagickHoughLineImage(intern->magick_wand, width, height, threshold);
++        if (status == MagickFalse) {
++                php_imagick_convert_imagick_exception(intern->magick_wand, "Unable to Hough line image" TSRMLS_CC);
++                return;
++        }
++        RETURN_TRUE;
++}
++/* }}} */
++#endif
++
+ PHP_METHOD(imagick, segmentimage)
+ {
+ 	php_imagick_object *intern;
+diff --git a/imagick_helpers.c b/imagick_helpers.c
+index 3d90aac..a85f72e 100644
+--- a/imagick_helpers.c
++++ b/imagick_helpers.c
+@@ -97,6 +97,11 @@ MagickBooleanType php_imagick_progress_monitor_callable(const char *text, const
+ 	fci_cache = empty_fcall_info_cache;
+ 
+ 	fci.size = sizeof(fci);
++
++#if PHP_VERSION_ID >= 80000
++	fci.named_params = NULL;
++#endif
++
+ #if PHP_VERSION_ID < 70100
+ 	fci.function_table = EG(function_table);
+ #endif
+@@ -113,7 +118,9 @@ MagickBooleanType php_imagick_progress_monitor_callable(const char *text, const
+ #endif
+ 	fci.param_count = 2;
+ 	fci.params = zargs;
++#if PHP_VERSION_ID < 80000
+ 	fci.no_separation = 0;
++#endif
+ #if PHP_VERSION_ID < 70100
+ 	fci.symbol_table = NULL;
+ #endif
+@@ -804,7 +811,7 @@ PixelWand *php_imagick_zval_to_pixelwand (zval *param, php_imagick_class_type_t
+ 		break;
+ 
+ 		case IS_OBJECT:
+-			if (instanceof_function_ex(Z_OBJCE_P(param), php_imagickpixel_sc_entry, 0 TSRMLS_CC)) {
++			if (instanceof_function(Z_OBJCE_P(param), php_imagickpixel_sc_entry TSRMLS_CC)) {
+ 				php_imagickpixel_object *intern = Z_IMAGICKPIXEL_P(param);
+ 				pixel_wand = intern->pixel_wand;
+ 			} else
+@@ -854,7 +861,7 @@ PixelWand *php_imagick_zval_to_opacity (zval *param, php_imagick_class_type_t ca
+ 		break;
+ 
+ 		case IS_OBJECT:
+-			if (instanceof_function_ex(Z_OBJCE_P(param), php_imagickpixel_sc_entry, 0 TSRMLS_CC)) {
++			if (instanceof_function(Z_OBJCE_P(param), php_imagickpixel_sc_entry TSRMLS_CC)) {
+ 				php_imagickpixel_object *intern = Z_IMAGICKPIXEL_P(param);
+ 				pixel_wand = intern->pixel_wand;
+ 			} else
+diff --git a/imagickkernel_class.c b/imagickkernel_class.c
+index 7504d29..9cfc581 100644
+--- a/imagickkernel_class.c
++++ b/imagickkernel_class.c
+@@ -79,7 +79,11 @@ static void php_imagickkernelvalues_to_zval(zval *zv, KernelInfo *kernel_info) {
+ }
+ 
+ 
++#if PHP_VERSION_ID >= 80000
++HashTable* php_imagickkernel_get_debug_info(zend_object *obj, int *is_temp TSRMLS_DC) /* {{{ */
++#else
+ HashTable* php_imagickkernel_get_debug_info(zval *obj, int *is_temp TSRMLS_DC) /* {{{ */
++#endif
+ {
+ 	php_imagickkernel_object *internp;
+ 	HashTable *debug_info;
+@@ -92,7 +96,11 @@ HashTable* php_imagickkernel_get_debug_info(zval *obj, int *is_temp TSRMLS_DC) /
+ 
+ 	*is_temp = 1; //var_dump will destroy the hashtable
+ 
++#if PHP_VERSION_ID >= 80000
++	internp = php_imagickkernel_fetch_object(obj);
++#else
+ 	internp = Z_IMAGICKKERNEL_P(obj);
++#endif
+ 	kernel_info = internp->kernel_info;
+ 
+ 	ALLOC_HASHTABLE(debug_info);
+diff --git a/php_imagick_defs.h b/php_imagick_defs.h
+index 5eb57e5..dd16896 100644
+--- a/php_imagick_defs.h
++++ b/php_imagick_defs.h
+@@ -42,6 +42,16 @@
+ #include "php_ini.h"
+ #include "Zend/zend.h"
+ 
++#if PHP_VERSION_ID >= 80000
++	#define HAVE_LOCALE_H
++	#define TSRMLS_C
++	#define TSRMLS_CC
++	#define TSRMLS_D
++	#define TSRMLS_DC
++	#define TSRMLS_FETCH()
++	#define TSRMLS_SET_CTX(ctx)
++#endif
++
+ /* Include locale header */
+ #ifdef HAVE_LOCALE_H
+ # include <locale.h>
+@@ -83,6 +93,10 @@ ZEND_BEGIN_MODULE_GLOBALS(imagick)
+ 	zend_bool locale_fix;
+ 	zend_bool progress_monitor;
+ 	zend_bool skip_version_check;
++
++	zend_bool set_single_thread;
++	im_long shutdown_sleep_count;
++
+ 	php_imagick_callback *progress_callback;
+ #ifdef PHP_IMAGICK_ZEND_MM
+ 	MagickWand *keep_alive;
+@@ -388,6 +402,12 @@ extern zend_class_entry *php_imagickkernel_exception_class_entry;
+ 
+ /* Forward declarations (Imagick) */
+ 
++#if (MagickLibVersion >= 0x700 && MagickLibVersion >= 0x709)
++  #define PHP_IMAGICK_HAVE_HOUGHLINE 1
++#else
++  #define PHP_IMAGICK_HAVE_HOUGHLINE 0
++#endif
++
+ /* The conditional methods */
+ #if MagickLibVersion > 0x628
+ PHP_METHOD(imagick, pingimageblob);
+@@ -510,6 +530,11 @@ PHP_METHOD(imagick, setimagegravity);
+ #if MagickLibVersion > 0x645
+ PHP_METHOD(imagick, importimagepixels);
+ PHP_METHOD(imagick, deskewimage);
++
++
++#if PHP_IMAGICK_HAVE_HOUGHLINE
++PHP_METHOD(imagick, houghlineimage);
++#endif
+ PHP_METHOD(imagick, segmentimage);
+ PHP_METHOD(imagick, sparsecolorimage);
+ PHP_METHOD(imagick, remapimage);
+diff --git a/tests/034_Imagick_annotateImage_basic.phpt b/tests/034_Imagick_annotateImage_basic.phpt
+index 65d113f..431df4b 100644
+--- a/tests/034_Imagick_annotateImage_basic.phpt
++++ b/tests/034_Imagick_annotateImage_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'rgb(232, 227, 232)';
+ 
+@@ -24,6 +26,8 @@ function annotateImage($strokeColor, $fillColor) {
+     
+     $text = "Imagick is a native php \nextension to create and \nmodify images using the\nImageMagick API.";
+ 
++    setFontForImagick($imagick);
++    setFontForImagickDraw($draw);
+     $imagick->annotateimage($draw, 40, 40, 0, $text);
+ 
+     $bytes = $imagick->getImageBlob();
+diff --git a/tests/047_Imagick_convolveImage_6.phpt b/tests/047_Imagick_convolveImage_6.phpt
+index 0bca35f..1a4cb41 100644
+--- a/tests/047_Imagick_convolveImage_6.phpt
++++ b/tests/047_Imagick_convolveImage_6.phpt
+@@ -38,5 +38,5 @@ convolveImage($bias, $kernelMatrix) ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::setimagebias() is deprecated in %s
++Deprecated: %s Imagick::setimagebias() is deprecated in %s
+ Ok
+diff --git a/tests/097_Imagick_newPseudoImage_basic.phpt b/tests/097_Imagick_newPseudoImage_basic.phpt
+index 5b22164..fbb87ef 100644
+--- a/tests/097_Imagick_newPseudoImage_basic.phpt
++++ b/tests/097_Imagick_newPseudoImage_basic.phpt
+@@ -5,7 +5,7 @@ Test Imagick, newPseudoImage
+ --FILE--
+ <?php
+ 
+-$canvasType = 'gradient:';
++$canvasType = 'gradient:red';
+ 
+ function newPseudoImage($canvasType) {
+     $imagick = new \Imagick();
+@@ -19,4 +19,4 @@ newPseudoImage($canvasType) ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Ok
+\ No newline at end of file
++Ok
+diff --git a/tests/098_Imagick_orderedPosterizeImage_basic.phpt b/tests/098_Imagick_orderedPosterizeImage_basic.phpt
+index e53ecb5..87192c5 100644
+--- a/tests/098_Imagick_orderedPosterizeImage_basic.phpt
++++ b/tests/098_Imagick_orderedPosterizeImage_basic.phpt
+@@ -28,5 +28,5 @@ orderedPosterizeImage($orderedPosterizeType) ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::orderedposterizeimage() is deprecated in %S
++Deprecated: %s Imagick::orderedposterizeimage() is deprecated in %S
+ Ok
+diff --git a/tests/102_Imagick_radialBlurImage_basic.phpt b/tests/102_Imagick_radialBlurImage_basic.phpt
+index bfcce5e..9820957 100644
+--- a/tests/102_Imagick_radialBlurImage_basic.phpt
++++ b/tests/102_Imagick_radialBlurImage_basic.phpt
+@@ -24,9 +24,9 @@ radialBlurImage() ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::radialblurimage() is deprecated in %s
++Deprecated: %s Imagick::radialblurimage() is deprecated in %s
+ 
+-Deprecated: Function Imagick::radialblurimage() is deprecated in %s
++Deprecated: %s Imagick::radialblurimage() is deprecated in %s
+ 
+-Deprecated: Function Imagick::radialblurimage() is deprecated in %s
++Deprecated: %s Imagick::radialblurimage() is deprecated in %s
+ Ok
+diff --git a/tests/112_Imagick_roundCorners_basic.phpt b/tests/112_Imagick_roundCorners_basic.phpt
+index cdf026f..98c798f 100644
+--- a/tests/112_Imagick_roundCorners_basic.phpt
++++ b/tests/112_Imagick_roundCorners_basic.phpt
+@@ -40,5 +40,5 @@ roundCorners() ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::roundcornersimage() is deprecated in %s
++Deprecated: %s Imagick::roundcornersimage() is deprecated in %s
+ Ok
+diff --git a/tests/121_Imagick_setImageBias_basic.phpt b/tests/121_Imagick_setImageBias_basic.phpt
+index 2ceab20..662a439 100644
+--- a/tests/121_Imagick_setImageBias_basic.phpt
++++ b/tests/121_Imagick_setImageBias_basic.phpt
+@@ -34,5 +34,5 @@ setImageBias($bias) ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::setimagebias() is deprecated in %s
++Deprecated: %s Imagick::setimagebias() is deprecated in %s
+ Ok
+diff --git a/tests/123_Imagick_setImageClipMask_basic.phpt b/tests/123_Imagick_setImageClipMask_basic.phpt
+index 7844fa7..a1620ba 100644
+--- a/tests/123_Imagick_setImageClipMask_basic.phpt
++++ b/tests/123_Imagick_setImageClipMask_basic.phpt
+@@ -48,5 +48,5 @@ setImageClipMask() ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::setimageclipmask() is deprecated in %s
++Deprecated: %s Imagick::setimageclipmask() is deprecated in %s
+ Ok
+diff --git a/tests/151_Imagick_subImageMatch_basic.phpt b/tests/151_Imagick_subImageMatch_basic.phpt
+index 491bb79..f11884f 100644
+--- a/tests/151_Imagick_subImageMatch_basic.phpt
++++ b/tests/151_Imagick_subImageMatch_basic.phpt
+@@ -2,7 +2,7 @@
+ Test Imagick, subImageMatch
+ --SKIPIF--
+ <?php
+-$imageMagickRequiredVersion=0x675;
++$imageMagickRequiredVersion=0x687;
+ require_once(dirname(__FILE__) . '/skipif.inc');
+ ?>
+ --FILE--
+diff --git a/tests/159_Imagick_transformImage_basic.phpt b/tests/159_Imagick_transformImage_basic.phpt
+index d3764c9..cf90987 100644
+--- a/tests/159_Imagick_transformImage_basic.phpt
++++ b/tests/159_Imagick_transformImage_basic.phpt
+@@ -22,5 +22,5 @@ transformimage() ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::transformimage() is deprecated in %s
++Deprecated: %s Imagick::transformimage() is deprecated in %s
+ Ok
+diff --git a/tests/177_ImagickDraw_composite_basic.phpt b/tests/177_ImagickDraw_composite_basic.phpt
+index 3c87524..00bd1a3 100644
+--- a/tests/177_ImagickDraw_composite_basic.phpt
++++ b/tests/177_ImagickDraw_composite_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -16,6 +18,8 @@ function composite($strokeColor, $fillColor, $backgroundColor) {
+ 
+     $draw = new \ImagickDraw();
+ 
++    setFontForImagickDraw($draw);
++
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+     $draw->setFillOpacity(1);
+diff --git a/tests/180_ImagickDraw_matte_basic.phpt b/tests/180_ImagickDraw_matte_basic.phpt
+index 88befea..b2ea71a 100644
+--- a/tests/180_ImagickDraw_matte_basic.phpt
++++ b/tests/180_ImagickDraw_matte_basic.phpt
+@@ -41,5 +41,5 @@ matte($strokeColor, $fillColor, $backgroundColor, $paintType) ;
+ echo "Ok";
+ ?>
+ --EXPECTF--
+-Deprecated: Function ImagickDraw::matte() is deprecated in %s
++Deprecated: %s ImagickDraw::matte() is deprecated in %s
+ Ok
+diff --git a/tests/206_ImagickDraw_setFontSize_basic.phpt b/tests/206_ImagickDraw_setFontSize_basic.phpt
+index 9ac6d26..97b34b5 100644
+--- a/tests/206_ImagickDraw_setFontSize_basic.phpt
++++ b/tests/206_ImagickDraw_setFontSize_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -16,6 +18,8 @@ function setFontSize($fillColor, $strokeColor, $backgroundColor) {
+ 
+     $draw = new \ImagickDraw();
+ 
++    setFontForImagickDraw($draw);
++
+     $draw->setStrokeOpacity(1);
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+diff --git a/tests/207_ImagickDraw_setFontFamily_basic.phpt b/tests/207_ImagickDraw_setFontFamily_basic.phpt
+index 230e77c..cf4ad1c 100644
+--- a/tests/207_ImagickDraw_setFontFamily_basic.phpt
++++ b/tests/207_ImagickDraw_setFontFamily_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -15,6 +17,7 @@ $fillColor = 'DodgerBlue2';
+ function setFontFamily($fillColor, $strokeColor, $backgroundColor) {
+ 
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+ 
+     $strokeColor = new \ImagickPixel($strokeColor);
+     $fillColor = new \ImagickPixel($fillColor);
+diff --git a/tests/208_ImagickDraw_setFontStretch_basic.phpt b/tests/208_ImagickDraw_setFontStretch_basic.phpt
+index af3cb92..08c2d9e 100644
+--- a/tests/208_ImagickDraw_setFontStretch_basic.phpt
++++ b/tests/208_ImagickDraw_setFontStretch_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -15,6 +17,7 @@ $fillColor = 'DodgerBlue2';
+ function setFontStretch($fillColor, $strokeColor, $backgroundColor) {
+ 
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+ 
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+diff --git a/tests/209_ImagickDraw_setFontWeight_basic.phpt b/tests/209_ImagickDraw_setFontWeight_basic.phpt
+index e98dc27..7fe9a6a 100644
+--- a/tests/209_ImagickDraw_setFontWeight_basic.phpt
++++ b/tests/209_ImagickDraw_setFontWeight_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -15,6 +17,7 @@ $fillColor = 'DodgerBlue2';
+ function setFontWeight($fillColor, $strokeColor, $backgroundColor) {
+ 
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+ 
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+diff --git a/tests/210_ImagickDraw_setFontStyle_basic.phpt b/tests/210_ImagickDraw_setFontStyle_basic.phpt
+index 920cce2..0bbc882 100644
+--- a/tests/210_ImagickDraw_setFontStyle_basic.phpt
++++ b/tests/210_ImagickDraw_setFontStyle_basic.phpt
+@@ -8,12 +8,16 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+ 
+ function setFontStyle($fillColor, $strokeColor, $backgroundColor) {
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
++
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+     $draw->setStrokeWidth(1);
+diff --git a/tests/212_ImagickDraw_setGravity_basic.phpt b/tests/212_ImagickDraw_setGravity_basic.phpt
+index b6ad07d..a803e1d 100644
+--- a/tests/212_ImagickDraw_setGravity_basic.phpt
++++ b/tests/212_ImagickDraw_setGravity_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -15,6 +17,7 @@ $fillColor = 'DodgerBlue2';
+ function setGravity($fillColor, $strokeColor, $backgroundColor) {
+ 
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+     $draw->setStrokeWidth(1);
+diff --git a/tests/222_ImagickDraw_setTextAlignment_basic.phpt b/tests/222_ImagickDraw_setTextAlignment_basic.phpt
+index bda8249..939e473 100644
+--- a/tests/222_ImagickDraw_setTextAlignment_basic.phpt
++++ b/tests/222_ImagickDraw_setTextAlignment_basic.phpt
+@@ -8,12 +8,15 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+ 
+ function setTextAlignment($strokeColor, $fillColor, $backgroundColor) {
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+     $draw->setStrokeWidth(1);
+diff --git a/tests/223_ImagickDraw_setTextAntialias_basic.phpt b/tests/223_ImagickDraw_setTextAntialias_basic.phpt
+index 0c9bcaf..e7cd7f2 100644
+--- a/tests/223_ImagickDraw_setTextAntialias_basic.phpt
++++ b/tests/223_ImagickDraw_setTextAntialias_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -15,6 +17,7 @@ $fillColor = 'DodgerBlue2';
+ function setTextAntialias($fillColor, $backgroundColor) {
+ 
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+     $draw->setStrokeColor('none');
+     $draw->setFillColor($fillColor);
+     $draw->setStrokeWidth(1);
+diff --git a/tests/224_ImagickDraw_setTextUnderColor_basic.phpt b/tests/224_ImagickDraw_setTextUnderColor_basic.phpt
+index 69a788e..141eacc 100644
+--- a/tests/224_ImagickDraw_setTextUnderColor_basic.phpt
++++ b/tests/224_ImagickDraw_setTextUnderColor_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -15,6 +17,7 @@ $textUnderColor = 'DeepPink2';
+ 
+ function setTextUnderColor($strokeColor, $fillColor, $backgroundColor, $textUnderColor) {
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+ 
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+diff --git a/tests/225_ImagickDraw_setTextDecoration_basic.phpt b/tests/225_ImagickDraw_setTextDecoration_basic.phpt
+index 5479971..b656158 100644
+--- a/tests/225_ImagickDraw_setTextDecoration_basic.phpt
++++ b/tests/225_ImagickDraw_setTextDecoration_basic.phpt
+@@ -8,6 +8,8 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -16,6 +18,7 @@ $textDecoration = 2;
+ function setTextDecoration($strokeColor, $fillColor, $backgroundColor, $textDecoration) {
+ 
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+ 
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+diff --git a/tests/241_Tutorial_psychedelicFont_basic.phpt b/tests/241_Tutorial_psychedelicFont_basic.phpt
+index b2e9873..9a9eba3 100644
+--- a/tests/241_Tutorial_psychedelicFont_basic.phpt
++++ b/tests/241_Tutorial_psychedelicFont_basic.phpt
+@@ -8,9 +8,11 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
+ 
+ function psychedelicFont() {
+     $draw = new \ImagickDraw();
++    setFontForImagickDraw($draw);
+     $name = 'Danack';
+ 
+     $draw->setStrokeOpacity(1);
+diff --git a/tests/244_Tutorial_psychedelicFontGif_basic.phpt b/tests/244_Tutorial_psychedelicFontGif_basic.phpt
+index f03bdf7..3fde1d7 100644
+--- a/tests/244_Tutorial_psychedelicFontGif_basic.phpt
++++ b/tests/244_Tutorial_psychedelicFontGif_basic.phpt
+@@ -8,6 +8,7 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
+ 
+ function psychedelicFontGif($name = 'Danack') {
+ 
+@@ -22,6 +23,7 @@ function psychedelicFontGif($name = 'Danack') {
+     for ($frame = 0; $frame < $maxFrames; $frame++) {
+ 
+         $draw = new \ImagickDraw();
++        setFontForImagickDraw($draw);
+ 
+         $draw->setStrokeOpacity(1);
+         $draw->setfontsize(150 * $scale);
+diff --git a/tests/256_Imagick_exportImagePixels_basic.phpt b/tests/256_Imagick_exportImagePixels_basic.phpt
+index d3eceb5..96a57b9 100644
+--- a/tests/256_Imagick_exportImagePixels_basic.phpt
++++ b/tests/256_Imagick_exportImagePixels_basic.phpt
+@@ -2,7 +2,7 @@
+ Test Imagick, Imagick::exportImagePixels
+ --SKIPIF--
+ <?php
+-$imageMagickRequiredVersion=0x675;
++$imageMagickRequiredVersion=0x687;
+ require_once(dirname(__FILE__) . '/skipif.inc');
+ ?>
+ --FILE--
+diff --git a/tests/264_ImagickDraw_getTextDirection_basic.phpt b/tests/264_ImagickDraw_getTextDirection_basic.phpt
+index 8dbcbcd..210d99a 100644
+--- a/tests/264_ImagickDraw_getTextDirection_basic.phpt
++++ b/tests/264_ImagickDraw_getTextDirection_basic.phpt
+@@ -8,6 +8,8 @@ checkClassMethods('ImagickDraw', array('getTextDirection', 'setTextDirection'));
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+@@ -15,6 +17,7 @@ $fillColor = 'DodgerBlue2';
+ 
+ 
+ $draw = new \ImagickDraw();
++setFontForImagickDraw($draw);
+ 
+ $draw->setStrokeColor($strokeColor);
+ $draw->setFillColor($fillColor);
+diff --git a/tests/266_ImagickDraw_getFontResolution_basic.phpt b/tests/266_ImagickDraw_getFontResolution_basic.phpt
+index 43a2e46..31bccfc 100644
+--- a/tests/266_ImagickDraw_getFontResolution_basic.phpt
++++ b/tests/266_ImagickDraw_getFontResolution_basic.phpt
+@@ -8,13 +8,15 @@ checkClassMethods('ImagickDraw', array('getFontResolution', 'setFontResolution')
+ --FILE--
+ <?php
+ 
++require_once(dirname(__FILE__) . '/functions.inc');
++
+ $backgroundColor = 'rgb(225, 225, 225)';
+ $strokeColor = 'rgb(0, 0, 0)';
+ $fillColor = 'DodgerBlue2';
+ 
+ 
+-
+ $draw = new \ImagickDraw();
++setFontForImagickDraw($draw);
+ 
+ $draw->setStrokeColor($strokeColor);
+ $draw->setFillColor($fillColor);
+diff --git a/tests/274_imagick_setImageAlpha.phpt b/tests/274_imagick_setImageAlpha.phpt
+index 28f1ef1..760f088 100644
+--- a/tests/274_imagick_setImageAlpha.phpt
++++ b/tests/274_imagick_setImageAlpha.phpt
+@@ -8,6 +8,10 @@ require_once(dirname(__FILE__) . '/skipif.inc');
+ --FILE--
+ <?php
+ 
++require_once __DIR__ . "/../util/functions.php";
++
++
++
+ $imagick = new Imagick();
+ $imagick->newPseudoImage(256, 256, 'xc:purple');
+ $imagick->setImageAlpha(0.5);
+@@ -18,19 +22,47 @@ $imagick->writeImage("./setAlphaTest.png");
+ $pixelTypes = array(
+ 	Imagick::PIXEL_CHAR => array(128, 0, 128, 128),
+ 	Imagick::PIXEL_FLOAT => array(0.50196081399918, 0, 0.50196081399918, 0.5),
+-	Imagick::PIXEL_DOUBLE => array(0.50196078431373, 0, 0.50196078431373, 0.5),
++    Imagick::PIXEL_DOUBLE => array(0.50196078431373, 0, 0.50196078431373, 0.5),
+ 	Imagick::PIXEL_SHORT => array(32896, 0, 32896, 32768),
+ );
+ 
++function getColorError($type, $expected, $actual) {
++
++    if ($type == Imagick::PIXEL_CHAR ||
++        $type == Imagick::PIXEL_SHORT) {
++        $string  = "Expected: " . $actual . "\n";
++        $string .= "Actual  : " . $actual . "\n";
++
++        return $string;
++    }
++
++    if ($type == Imagick::PIXEL_FLOAT) {
++        return float_compare_32($expected, $actual);
++    }
++
++    if ($type == Imagick::PIXEL_DOUBLE) {
++        return float_compare($expected, $actual);
++    }
++
++    echo "Unknown type: $type \n";
++    exit(-1);
++
++}
++
+ 
+ foreach ($pixelTypes as $pixelType => $expectedValues) {
+ 	$pixels = $imagick->exportImagePixels(0, 0, 1, 1, "RGBA", $pixelType);
+-	for ($i=0; $i<4; $i++) {
+-		$actual = $pixels[$i];
+-		$expected = $expectedValues[$i];
++	$channelNames = ['R', 'G', 'B', 'A'];
++
++	// Loop over the colours
++	for ($channel=0; $channel<4; $channel++) {
++		$actual = $pixels[$channel];
++		$expected = $expectedValues[$channel];
+ 		if (abs($actual - $expected) > 0.0000001) {
+-			echo "Pixel values appear incorrect for pixelType $pixelType:";
+-			var_dump($pixels);
++		    $channelName = $channelNames[$channel];
++
++			echo "Pixel values appear incorrect for pixelType $pixelType channel:$channelName\n";
++            echo getColorError($pixelType, $expected, $actual);
+ 			break;
+ 		}
+ 	}
+diff --git a/tests/279_ImagickDraw_setTextInterlineSpacing.phpt b/tests/279_ImagickDraw_setTextInterlineSpacing.phpt
+index 27250e3..c7e6462 100644
+--- a/tests/279_ImagickDraw_setTextInterlineSpacing.phpt
++++ b/tests/279_ImagickDraw_setTextInterlineSpacing.phpt
+@@ -23,6 +23,8 @@ foreach ($interlineSpacings as $interlineSpacing) {
+ 
+     $draw = new \ImagickDraw();
+ 
++    setFontForImagickDraw($draw);
++
+     $draw->setStrokeColor($strokeColor);
+     $draw->setFillColor($fillColor);
+ 
+diff --git a/tests/281_ini_settings_default.phpt b/tests/281_ini_settings_default.phpt
+new file mode 100644
+index 0000000..e397e98
+--- /dev/null
++++ b/tests/281_ini_settings_default.phpt
+@@ -0,0 +1,29 @@
++--TEST--
++OpenMP segfault hacks
++--SKIPIF--
++<?php 
++
++
++require_once(dirname(__FILE__) . '/skipif.inc');
++ 
++?>
++--FILE--
++<?php
++
++
++$sleepCount = ini_get('imagick.shutdown_sleep_count');
++$setSingleThread = ini_get('imagick.set_single_thread');
++
++if ($sleepCount != 10) {
++    echo "imagick.shutdown_sleep_count is not set to 10 but instead " . var_export($sleepCount, true) ."\n";
++}
++
++if ($setSingleThread != 0) {
++    echo "imagick.set_single_thread setting is not false but instead " . var_export($setSingleThread, true) ."\n";
++}
++
++
++echo "Complete".PHP_EOL;
++?>
++--EXPECTF--
++Complete
+diff --git a/tests/282_ini_settings_set_falsy_string.phpt b/tests/282_ini_settings_set_falsy_string.phpt
+new file mode 100644
+index 0000000..4ed4f1d
+--- /dev/null
++++ b/tests/282_ini_settings_set_falsy_string.phpt
+@@ -0,0 +1,41 @@
++--TEST--
++OpenMP segfault hacks
++
++--INI--
++imagick.shutdown_sleep_count=Off
++imagick.set_single_thread=0
++--SKIPIF--
++<?php 
++
++
++require_once(dirname(__FILE__) . '/skipif.inc');
++ 
++?>
++--FILE--
++<?php
++
++
++// So, this can't be tested for properly. ini values are stored as strings internally
++// to PHP, and are not normalised to the actual type used by an extension. Which means
++// you can't easily get the actual value being used by an extension, when the input
++// type isn't the same type as the extension is going to use it as.
++// aka 'Off' is stored as '' not 0.
++//
++//$sleepCount = ini_get('imagick.shutdown_sleep_count');
++//if ($sleepCount !== 0) {
++//    echo "imagick.shutdown_sleep_count is not set to 0 but instead " . var_export($sleepCount, true) ."\n";
++//}
++
++$setSingleThread = ini_get('imagick.set_single_thread');
++
++// This should be a strict compare but can't be because
++// it's stored as a string...
++if ($setSingleThread != 0) {
++    echo "imagick.set_single_thread setting is not 0 but instead " . var_export($setSingleThread, true) ."\n";
++}
++
++
++echo "Complete".PHP_EOL;
++?>
++--EXPECTF--
++Complete
+diff --git a/tests/283_ini_settings_set_falsy_zero.phpt b/tests/283_ini_settings_set_falsy_zero.phpt
+new file mode 100644
+index 0000000..8e41a35
+--- /dev/null
++++ b/tests/283_ini_settings_set_falsy_zero.phpt
+@@ -0,0 +1,33 @@
++--TEST--
++OpenMP segfault hacks
++
++--INI--
++imagick.shutdown_sleep_count=0
++imagick.set_single_thread=0
++--SKIPIF--
++<?php 
++
++
++require_once(dirname(__FILE__) . '/skipif.inc');
++ 
++?>
++--FILE--
++<?php
++
++
++$sleepCount = ini_get('imagick.shutdown_sleep_count');
++$setSingleThread = ini_get('imagick.set_single_thread');
++
++if ($sleepCount != 0) {
++    echo "imagick.shutdown_sleep_count is not set to 10 but instead " . var_export($sleepCount, true) ."\n";
++}
++
++if ($setSingleThread != 0) {
++    echo "imagick.set_single_thread setting is not false but instead " . var_export($sleepCount, true) ."\n";
++}
++
++
++echo "Complete".PHP_EOL;
++?>
++--EXPECTF--
++Complete
+diff --git a/tests/284_ini_settings_set_truthy_number.phpt b/tests/284_ini_settings_set_truthy_number.phpt
+new file mode 100644
+index 0000000..fc0a0bb
+--- /dev/null
++++ b/tests/284_ini_settings_set_truthy_number.phpt
+@@ -0,0 +1,33 @@
++--TEST--
++OpenMP segfault hacks
++
++--INI--
++imagick.shutdown_sleep_count=20
++imagick.set_single_thread=1
++--SKIPIF--
++<?php 
++
++
++require_once(dirname(__FILE__) . '/skipif.inc');
++ 
++?>
++--FILE--
++<?php
++
++
++$sleepCount = intval(ini_get('imagick.shutdown_sleep_count'));
++$setSingleThread = ini_get('imagick.set_single_thread');
++
++if ($sleepCount != 20) {
++    echo "imagick.shutdown_sleep_count is not set to 10 but instead " . var_export($sleepCount, true) ."\n";
++}
++
++if ($setSingleThread != 1) {
++    echo "imagick.set_single_thread setting is not true but instead " . var_export($setSingleThread, true) ."\n";
++}
++
++
++echo "Complete".PHP_EOL;
++?>
++--EXPECTF--
++Complete
+diff --git a/tests/285_ini_settings_set_truthy_string.phpt b/tests/285_ini_settings_set_truthy_string.phpt
+new file mode 100644
+index 0000000..c35a213
+--- /dev/null
++++ b/tests/285_ini_settings_set_truthy_string.phpt
+@@ -0,0 +1,33 @@
++--TEST--
++OpenMP segfault hacks
++
++--INI--
++imagick.shutdown_sleep_count=On
++imagick.set_single_thread=On
++--SKIPIF--
++<?php 
++
++
++require_once(dirname(__FILE__) . '/skipif.inc');
++ 
++?>
++--FILE--
++<?php
++
++
++$sleepCount = intval(ini_get('imagick.shutdown_sleep_count'));
++$setSingleThread = ini_get('imagick.set_single_thread');
++
++if ($sleepCount != 1) {
++    echo "imagick.shutdown_sleep_count is not set to 1 but instead " . var_export($sleepCount, true) ."\n";
++}
++
++if ($setSingleThread != 1) {
++    echo "imagick.set_single_thread setting is not true but instead " . var_export($setSingleThread, true) ."\n";
++}
++
++
++echo "Complete".PHP_EOL;
++?>
++--EXPECTF--
++Complete
+diff --git a/tests/bug20636.phpt b/tests/bug20636.phpt
+index adba98a..eb64b39 100644
+--- a/tests/bug20636.phpt
++++ b/tests/bug20636.phpt
+@@ -27,5 +27,5 @@ try {
+ 
+ ?>
+ --EXPECTF--
+-Deprecated: Function Imagick::roundcorners() is deprecated in %s
++Deprecated: %s Imagick::roundcorners() is deprecated in %s
+ success
+diff --git a/tests/functions.inc b/tests/functions.inc
+index f5c1ef1..5fa3d2f 100644
+--- a/tests/functions.inc
++++ b/tests/functions.inc
+@@ -61,5 +61,52 @@ function isVersionGreaterEqual($testIm6Version, $im7Version)
+     return false;
+ }
+ 
++/**
++ * On some systems, where the standard fonts aren't available, trying
++ * to draw any text fails as the ImageMagick default font is null.
++ *
++ * This function just find a 'sensible' font to use, either from the
++ * preferred list, or just the first one from queryFonts(). That 'probably'
++ * is the right thing to do, as it makes the tests more stable.
++ */
++function findDefaultFont()
++{
++    $knownFonts = [
++        'Courier',
++        'Helvetica',
++        'Times-Roman',
++        'Liberation-Mono',
++        'Utopia',
++    ];
++
++    $fontList = \Imagick::queryFonts();
++
++    foreach ($knownFonts as $knownFont) {
++
++        if (in_array($knownFont, $fontList, true) === true) {
++            return $knownFont;
++        }
++    }
++
++    if (count($fontList) !== 0) {
++        return $fontList[0];
++    }
+ 
++    throw new \Exception("No fonts available on system, apparently.");
++}
+ 
++// Find and set a font for the Imagick object
++function setFontForImagick(\Imagick $imagick)
++{
++    $font = findDefaultFont();
++
++    $imagick->setFont($font);
++}
++
++// Find and set a font for the ImagickDraw object
++function setFontForImagickDraw(\ImagickDraw $imagickDraw)
++{
++    $font = findDefaultFont();
++
++    $imagickDraw->setFont($font);
++}

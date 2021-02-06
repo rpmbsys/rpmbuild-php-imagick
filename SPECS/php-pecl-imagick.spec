@@ -9,7 +9,7 @@
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
 Version:        3.4.4
-Release:        1%{?dist}
+Release:        2%{?dist}
 License:        PHP
 Group:          Development/Libraries
 URL:            http://pecl.php.net/package/%pecl_name
@@ -19,6 +19,8 @@ Source0:        http://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
 Patch0:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/290.patch
 Patch1:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/291.patch
 Patch2:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/296.patch
+
+Patch3:        %{pecl_name}-php8.patch
 
 BuildRequires:  php-pear >= 1.4.7
 BuildRequires:  php-devel >= 5.1.3, ImageMagick-devel >= 6.2.4
@@ -74,6 +76,7 @@ cd NTS
 %if "%{php_version}" > "7.4"
 %patch2 -p1
 %endif
+%patch3 -p1 -b .up
 
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
@@ -205,6 +208,9 @@ fi
 %endif
 
 %changelog
+* Sat Feb  6 2021 Alexander Ursu <alexander.ursu@gmail.com> - 3.4.4-2
+- add patche for PHP 8 from upstream
+
 * Tue May  7 2019 Remi Collet <remi@remirepo.net> - 3.4.4-1
 - update to 3.4.4
 - drop patch merged upstream
