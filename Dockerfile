@@ -3,7 +3,7 @@ ARG image=php-7.4
 
 FROM aursu/pearbuild:${centos}-${image}
 
-RUN yum -y --enablerepo=bintray-custom install \
+RUN yum -y install \
         ImageMagick-devel \
         urw-base35-gothic-fonts \
     && yum clean all && rm -rf /var/cache/yum
