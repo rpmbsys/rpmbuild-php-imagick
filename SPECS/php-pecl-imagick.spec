@@ -2,6 +2,9 @@
 %{!?__pecl:      %global __pecl       %{_bindir}/pecl}
 %{!?__php:       %global __php        %{_bindir}/php}
 
+%define _debugsource_template %{nil}
+%define debug_package %{nil}
+
 %global pecl_name  imagick
 %global ini_name   40-%{pecl_name}.ini
 %global with_zts   0%{?__ztsphp:1}

@@ -2,6 +2,9 @@
 %{!?__pecl:      %global __pecl       %{_bindir}/pecl7}
 %{!?__php:       %global __php        %{_bindir}/php7}
 
+%define _debugsource_template %{nil}
+%define debug_package %{nil}
+
 %global pecl_name  imagick
 %global ini_name   40-%{pecl_name}.ini
 
