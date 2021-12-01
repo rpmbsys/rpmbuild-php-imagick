@@ -4,6 +4,8 @@
 
 %define _debugsource_template %{nil}
 %define debug_package %{nil}
+# we don't want -z defs linker flag
+%undefine _strict_symbol_defs_build
 
 %global pecl_name  imagick
 %global ini_name   40-%{pecl_name}.ini
@@ -11,19 +13,12 @@
 
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
-Version:        3.4.4
-Release:        13%{?dist}
+Version:        3.6.0
+Release:        1%{?dist}
 License:        PHP
-Group:          Development/Libraries
 URL:            http://pecl.php.net/package/%pecl_name
 
 Source0:        http://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
-
-Patch0:        %{pecl_name}-php8.patch
-Patch1:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/346.patch
-Patch2:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/347.patch
-Patch3:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/348.patch
-Patch4:        https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/350.patch
 
 BuildRequires:  php-pear >= 1.4.7
 BuildRequires:  php-devel >= 5.1.3, ImageMagick-devel >= 6.2.4
@@ -39,6 +34,7 @@ Provides:       php-pecl(%pecl_name)         = %{version}
 Provides:       php-pecl(%pecl_name)%{?_isa} = %{version}
 
 Conflicts:      php-pecl-gmagick
+
 
 %description
 %pecl_name is a native php extension to create and modify images using the
@@ -73,13 +69,6 @@ then : "Font files detected!"
 fi
 
 cd NTS
-
-%patch0 -p1 -b .up
-%patch1 -p1 -b .pr346
-%patch2 -p1 -b .pr347
-%patch3 -p1 -b .pr348
-%patch4 -p1 -b .pr350
-
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
    : Error: Upstream version is ${extver}, expecting %{version}%{?prever}.
@@ -101,6 +90,13 @@ imagick.skip_version_check=1
 
 ; Used to enable the image progress monitor.
 ;imagick.progress_monitor=0
+
+; multi-thread management
+;imagick.set_single_thread => 1 => 1
+;imagick.shutdown_sleep_count => 10 => 10
+
+; to allow null images
+;imagick.allow_zero_dimension_images => 0 => 0
 EOF
 
 %if %{with_zts}
@@ -149,35 +145,25 @@ done
 
 
 %check
-export REPORT_EXIT_STATUS=1
-
 : simple module load test for NTS extension
 cd NTS
 %{__php} --no-php-ini \
-    --define extension_dir=%{buildroot}%{php_extdir} \
-    --define extension=%{pecl_name}.so \
-    --modules | grep %{pecl_name}
+    --define extension=%{buildroot}%{php_extdir}/%{pecl_name}.so \
+    --modules | grep '^%{pecl_name}$'
 
 # Ignore know failed test on some ach (s390x, armv7hl, aarch64) with timeout
 rm tests/229_Tutorial_fxAnalyzeImage_case1.phpt
-# Fatal error: Uncaught ImagickException: non-conforming drawing primitive definition `density'
-rm -f tests/268_ImagickDraw_getDensity_basic.phpt
-# Imagick::getRegistry exception
-rm -f tests/150_Imagick_setregistry.phpt
 
 : upstream test suite for NTS extension
-TEST_PHP_EXECUTABLE=%{__php} \
 TEST_PHP_ARGS="-n -d extension=%{buildroot}%{php_extdir}/%{pecl_name}.so" \
-NO_INTERACTION=1 \
-%{__php} -n run-tests.php --show-diff
+%{__php} -n run-tests.php -q --show-diff %{?_smp_mflags}
 
 %if %{with_zts}
 : simple module load test for ZTS extension
 cd ../ZTS
 %{__ztsphp} --no-php-ini \
-    --define extension_dir=%{buildroot}%{php_ztsextdir} \
-    --define extension=%{pecl_name}.so \
-    --modules | grep %{pecl_name}
+    --define extension=%{buildroot}%{php_ztsextdir}/%{pecl_name}.so \
+    --modules | grep '^%{pecl_name}$'
 %endif
 
 %post
@@ -209,7 +195,11 @@ fi
 %{php_ztsincldir}/ext/%{pecl_name}
 %endif
 
+
 %changelog
+* Thu Nov 18 2021 Remi Collet <remi@remirepo.net> - 3.6.0-1
+- update to 3.6.0
+
 * Mon Sep 28 2020 Remi Collet <remi@remirepo.net> - 3.4.4-13
 - add patch for test suite with PHP 8 from
   https://github.com/Imagick/imagick/pull/350 - simpler warning
