@@ -13,12 +13,12 @@
 
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
-Version:        3.6.0
+Version:        3.7.0
 Release:        1%{?dist}
 License:        PHP
-URL:            http://pecl.php.net/package/%pecl_name
+URL:            https://pecl.php.net/package/%pecl_name
 
-Source0:        http://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
+Source0:        https://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
 
 BuildRequires:  php-pear >= 1.4.7
 BuildRequires:  php-devel >= 5.1.3, ImageMagick-devel >= 6.2.4
@@ -37,7 +37,7 @@ Conflicts:      php-pecl-gmagick
 
 
 %description
-%pecl_name is a native php extension to create and modify images using the
+Imagick is a native php extension to create and modify images using the
 ImageMagick API.
 
 
@@ -45,7 +45,7 @@ ImageMagick API.
 Summary:       %{pecl_name} extension developer files (header)
 Group:         Development/Libraries
 Requires:      %{name}%{?_isa} = %{version}-%{release}
-Requires:      %{?scl_prefix}php-devel%{?_isa}
+Requires:      php-devel%{?_isa}
 
 %description devel
 These are the files needed to compile programs using %{pecl_name} extension.
@@ -197,6 +197,9 @@ fi
 
 
 %changelog
+* Wed Jan 12 2022 Remi Collet <remi@remirepo.net> - 3.7.0-1
+- update to 3.7.0
+
 * Thu Nov 18 2021 Remi Collet <remi@remirepo.net> - 3.6.0-1
 - update to 3.6.0
 

@@ -18,10 +18,10 @@ workflows:
           bintray-repo: php74custom
           bintray_uploader: centos7bintray
       - docker-rpmbuild/build:
-          name: centos8imagick
-          build_service: centos8imagick
+          name: stream8imagick
+          build_service: stream8imagick
           bintray-repo: php74custom
-          bintray_uploader: centos8bintray
+          bintray_uploader: stream8bintray
       - docker-rpmbuild/build:
           name: centos7imagickphp81
           build_file: docker-compose.php81.yml
@@ -29,20 +29,8 @@ workflows:
           bintray-repo: php81custom
           bintray_uploader: centos7bintray
       - docker-rpmbuild/build:
-          name: centos8imagickphp81
+          name: stream8imagickphp81
           build_file: docker-compose.php81.yml
-          build_service: centos8imagickphp81
+          build_service: stream8imagickphp81
           bintray-repo: php81custom
-          bintray_uploader: centos8bintray
-      - docker-rpmbuild/build:
-          name: centos7imagickphp80
-          build_file: docker-compose.php80.yml
-          build_service: centos7imagickphp80
-          bintray-repo: php8custom
-          bintray_uploader: centos7bintray
-      - docker-rpmbuild/build:
-          name: centos8imagickphp80
-          build_file: docker-compose.php80.yml
-          build_service: centos8imagickphp80
-          bintray-repo: php8custom
-          bintray_uploader: centos8bintray
+          bintray_uploader: stream8bintray
