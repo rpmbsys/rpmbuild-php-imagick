@@ -14,7 +14,7 @@
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
 Version:        3.7.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 License:        PHP
 URL:            https://pecl.php.net/package/%pecl_name
 
@@ -197,6 +197,9 @@ fi
 
 
 %changelog
+* Thu Jul 14 2022 Alexander Ursu <alexander.ursu@gmail.com> - 3.7.0-2
+- rebuild with libMagickCore-6.Q16.so.7
+
 * Wed Jan 12 2022 Remi Collet <remi@remirepo.net> - 3.7.0-1
 - update to 3.7.0
 
