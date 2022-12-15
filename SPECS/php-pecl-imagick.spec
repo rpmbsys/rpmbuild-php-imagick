@@ -5,7 +5,7 @@
 
 %global pecl_name  imagick
 %global ini_name   40-%{pecl_name}.ini
-%global with_zts   0%{?__ztsphp:1}
+%global with_zts    0%{!?_without_zts:%{?__ztsphp:1}}
 
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
@@ -15,6 +15,7 @@ License:        PHP
 URL:            https://pecl.php.net/package/%pecl_name
 
 Source0:        https://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
+#Patch0:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/458.patch
 
 BuildRequires:  php-pear
 BuildRequires:  php-devel
@@ -66,6 +67,8 @@ cd NTS
 : Avoid arginfo to be regenerated
 rm *.stub.php
 
+# patch0 -p1 -b .pr458
+
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
    : Error: Upstream version is ${extver}, expecting %{version}%{?prever}.
@@ -102,6 +105,8 @@ cp -r NTS ZTS
 
 
 %build
+%{?dtsenable}
+
 : Standard NTS build
 cd NTS
 %{_bindir}/phpize
@@ -118,6 +123,8 @@ make %{?_smp_mflags}
 
 
 %install
+%{?dtsenable}
+
 make install INSTALL_ROOT=%{buildroot} -C NTS
 
 # Drop in the bit of configuration
@@ -140,8 +147,24 @@ for i in $(grep 'role="doc"' ../package.xml | sed -e 's/^.*name="//;s/".*$//')
 do [ -f $i ]          &&  install -Dpm 644 $i          %{buildroot}%{pecl_docdir}/%{pecl_name}/$i
 done
 
+%if 0%{?fedora} < 24 && 0%{?rhel} < 8
+%post
+if [ -x %{__pecl} ] ; then
+    %{pecl_install} %{pecl_xmldir}/%{name}.xml >/dev/null || :
+fi
+
+%postun
+if [ $1 -eq 0 -a -x %{__pecl} ] ; then
+    %{pecl_uninstall} %{pecl_name} >/dev/null || :
+fi
+%endif
 
 %check
+export REPORT_EXIT_STATUS=1
+
+# very long, and erratic results, sometime timeout
+rm ?TS/tests/229_Tutorial_fxAnalyzeImage_case1.phpt
+
 : simple module load test for NTS extension
 cd NTS
 %{__php} --no-php-ini \
@@ -149,12 +172,16 @@ cd NTS
     --modules | grep '^%{pecl_name}$'
 
 # Ignore know failed test on some ach (s390x, armv7hl, aarch64) with timeout
-rm tests/229_Tutorial_fxAnalyzeImage_case1.phpt
 rm tests/244_Tutorial_psychedelicFontGif_basic.phpt
 
 : upstream test suite for NTS extension
+TEST_PHP_EXECUTABLE=%{__php} \
 TEST_PHP_ARGS="-n -d extension=%{buildroot}%{php_extdir}/%{pecl_name}.so" \
+%if "%{php_version}" > "7.4"
 %{__php} -n run-tests.php -q --show-diff %{?_smp_mflags}
+%else
+%{__php} -n run-tests.php -q --show-diff
+%endif
 
 %if %{with_zts}
 : simple module load test for ZTS extension
