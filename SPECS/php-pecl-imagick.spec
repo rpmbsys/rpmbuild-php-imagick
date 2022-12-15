@@ -1,7 +1,3 @@
-%{!?php_inidir:  %global php_inidir   %{_sysconfdir}/php.d}
-%{!?__pecl:      %global __pecl       %{_bindir}/pecl}
-%{!?__php:       %global __php        %{_bindir}/php}
-
 %define _debugsource_template %{nil}
 %define debug_package %{nil}
 # we don't want -z defs linker flag
@@ -20,13 +16,12 @@ URL:            https://pecl.php.net/package/%pecl_name
 
 Source0:        https://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
 
-BuildRequires:  php-pear >= 1.4.7
-BuildRequires:  php-devel >= 5.1.3, ImageMagick-devel >= 6.2.4
+BuildRequires:  php-pear
+BuildRequires:  php-devel
+BuildRequires:  pkgconfig(ImageMagick)
 
 Requires:       php(zend-abi) = %{php_zend_api}
 Requires:       php(api) = %{php_core_api}
-Requires(post): %{__pecl}
-Requires(postun): %{__pecl}
 
 Provides:       php-%pecl_name               = %{version}
 Provides:       php-%pecl_name%{?_isa}       = %{version}
@@ -43,7 +38,6 @@ ImageMagick API.
 
 %package devel
 Summary:       %{pecl_name} extension developer files (header)
-Group:         Development/Libraries
 Requires:      %{name}%{?_isa} = %{version}-%{release}
 Requires:      php-devel%{?_isa}
 
@@ -69,6 +63,9 @@ then : "Font files detected!"
 fi
 
 cd NTS
+: Avoid arginfo to be regenerated
+rm *.stub.php
+
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
    : Error: Upstream version is ${extver}, expecting %{version}%{?prever}.
@@ -153,6 +150,7 @@ cd NTS
 
 # Ignore know failed test on some ach (s390x, armv7hl, aarch64) with timeout
 rm tests/229_Tutorial_fxAnalyzeImage_case1.phpt
+rm tests/244_Tutorial_psychedelicFontGif_basic.phpt
 
 : upstream test suite for NTS extension
 TEST_PHP_ARGS="-n -d extension=%{buildroot}%{php_extdir}/%{pecl_name}.so" \
@@ -166,13 +164,6 @@ cd ../ZTS
     --modules | grep '^%{pecl_name}$'
 %endif
 
-%post
-%{pecl_install} %{pecl_xmldir}/%{name}.xml >/dev/null || :
-
-%postun
-if [ $1 -eq 0 ] ; then
-    %{pecl_uninstall} %{pecl_name} >/dev/null || :
-fi
 
 %files
 %doc %{pecl_docdir}/%{pecl_name}
