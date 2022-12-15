@@ -1,6 +1,6 @@
 version: "3"
 services:
-  centos7imagick:
+  centos7build:
     volumes:
       - rpm7:/home/centos/rpmbuild/RPMS
     build:
