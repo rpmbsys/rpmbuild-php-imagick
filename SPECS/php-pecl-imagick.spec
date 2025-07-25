@@ -1,21 +1,17 @@
-%define _debugsource_template %{nil}
-%define debug_package %{nil}
-# we don't want -z defs linker flag
-%undefine _strict_symbol_defs_build
-
+%global pie_vend   imagick
+%global pie_proj   imagick
 %global pecl_name  imagick
 %global ini_name   40-%{pecl_name}.ini
-%global with_zts    0%{!?_without_zts:%{?__ztsphp:1}}
+%global with_zts   0%{?__ztsphp:1}
 
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
-Version:        3.7.0
-Release:        2%{?dist}
-License:        PHP
+Version:        3.8.0
+Release:        1%{?dist}
+License:        PHP-3.01
 URL:            https://pecl.php.net/package/%pecl_name
 
 Source0:        https://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
-#Patch0:         https://patch-diff.githubusercontent.com/raw/Imagick/imagick/pull/458.patch
 
 BuildRequires:  php-pear
 BuildRequires:  php-devel
@@ -24,10 +20,12 @@ BuildRequires:  pkgconfig(ImageMagick)
 Requires:       php(zend-abi) = %{php_zend_api}
 Requires:       php(api) = %{php_core_api}
 
-Provides:       php-%pecl_name               = %{version}
-Provides:       php-%pecl_name%{?_isa}       = %{version}
-Provides:       php-pecl(%pecl_name)         = %{version}
-Provides:       php-pecl(%pecl_name)%{?_isa} = %{version}
+Provides:       php-%pecl_name                   = %{version}
+Provides:       php-%pecl_name%{?_isa}           = %{version}
+Provides:       php-pecl(%pecl_name)             = %{version}
+Provides:       php-pecl(%pecl_name)%{?_isa}     = %{version}
+Provides:       php-pie(%{pie_vend}/%{pie_proj}) = %{version}
+Provides:       php-%{pie_vend}-%{pie_proj}      = %{version}
 
 Conflicts:      php-pecl-gmagick
 
@@ -67,8 +65,6 @@ cd NTS
 : Avoid arginfo to be regenerated
 rm *.stub.php
 
-# patch0 -p1 -b .pr458
-
 extver=$(sed -n '/#define PHP_IMAGICK_VERSION/{s/.* "//;s/".*$//;p}' php_imagick.h)
 if test "x${extver}" != "x%{version}%{?prever}"; then
    : Error: Upstream version is ${extver}, expecting %{version}%{?prever}.
@@ -105,8 +101,6 @@ cp -r NTS ZTS
 
 
 %build
-%{?dtsenable}
-
 : Standard NTS build
 cd NTS
 %{_bindir}/phpize
@@ -123,8 +117,6 @@ make %{?_smp_mflags}
 
 
 %install
-%{?dtsenable}
-
 make install INSTALL_ROOT=%{buildroot} -C NTS
 
 # Drop in the bit of configuration
@@ -147,24 +139,8 @@ for i in $(grep 'role="doc"' ../package.xml | sed -e 's/^.*name="//;s/".*$//')
 do [ -f $i ]          &&  install -Dpm 644 $i          %{buildroot}%{pecl_docdir}/%{pecl_name}/$i
 done
 
-%if 0%{?fedora} < 24 && 0%{?rhel} < 8
-%post
-if [ -x %{__pecl} ] ; then
-    %{pecl_install} %{pecl_xmldir}/%{name}.xml >/dev/null || :
-fi
-
-%postun
-if [ $1 -eq 0 -a -x %{__pecl} ] ; then
-    %{pecl_uninstall} %{pecl_name} >/dev/null || :
-fi
-%endif
 
 %check
-export REPORT_EXIT_STATUS=1
-
-# very long, and erratic results, sometime timeout
-rm ?TS/tests/229_Tutorial_fxAnalyzeImage_case1.phpt
-
 : simple module load test for NTS extension
 cd NTS
 %{__php} --no-php-ini \
@@ -172,16 +148,17 @@ cd NTS
     --modules | grep '^%{pecl_name}$'
 
 # Ignore know failed test on some ach (s390x, armv7hl, aarch64) with timeout
+rm tests/229_Tutorial_fxAnalyzeImage_case1.phpt
 rm tests/244_Tutorial_psychedelicFontGif_basic.phpt
+# very long, and erratic results
+rm tests/073_Imagick_forwardFourierTransformImage_basic.phpt
+rm tests/086_Imagick_forwardFourierTransformImage_basic.phpt
+rm tests/151_Imagick_subImageMatch_basic.phpt
+rm tests/316_Imagick_getImageKurtosis.phpt
 
 : upstream test suite for NTS extension
-TEST_PHP_EXECUTABLE=%{__php} \
 TEST_PHP_ARGS="-n -d extension=%{buildroot}%{php_extdir}/%{pecl_name}.so" \
-%if "%{php_version}" > "7.4"
 %{__php} -n run-tests.php -q --show-diff %{?_smp_mflags}
-%else
-%{__php} -n run-tests.php -q --show-diff
-%endif
 
 %if %{with_zts}
 : simple module load test for ZTS extension
@@ -215,31 +192,120 @@ cd ../ZTS
 
 
 %changelog
-* Thu Jul 14 2022 Alexander Ursu <alexander.ursu@gmail.com> - 3.7.0-2
-- rebuild with libMagickCore-6.Q16.so.7
+* Fri Apr 11 2025 Remi Collet <remi@remirepo.net> - 3.8.0-1
+- update to 3.8.0
+
+* Mon Jan 29 2024 Remi Collet <remi@remirepo.net> - 3.7.0-11
+- ignore 1 test failing with recent ImageMagick version
+
+* Thu Jan 25 2024 Fedora Release Engineering <releng@fedoraproject.org> - 3.7.0-11
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
+
+* Sun Jan 21 2024 Fedora Release Engineering <releng@fedoraproject.org> - 3.7.0-10
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
+
+* Tue Oct 03 2023 Remi Collet <remi@remirepo.net> - 3.7.0-9
+- rebuild for https://fedoraproject.org/wiki/Changes/php83
+
+* Fri Jul 21 2023 Fedora Release Engineering <releng@fedoraproject.org> - 3.7.0-8
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_39_Mass_Rebuild
+
+* Thu Apr 20 2023 Remi Collet <remi@remirepo.net> - 3.7.0-7
+- use SPDX license ID
+
+* Thu Jan 05 2023 Neal Gompa <ngompa@fedoraproject.org> - 3.7.0-6
+- Rebuild for ImageMagick 7
+
+* Wed Oct 05 2022 Remi Collet <remi@remirepo.net> - 3.7.0-5
+- rebuild for https://fedoraproject.org/wiki/Changes/php82
+
+* Fri Jul 22 2022 Fedora Release Engineering <releng@fedoraproject.org> - 3.7.0-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_37_Mass_Rebuild
+
+* Tue Mar 22 2022 Remi Collet <remi@remirepo.net> - 3.7.0-3
+- hack to avoid arginfo to be regenerated
+
+* Fri Jan 21 2022 Fedora Release Engineering <releng@fedoraproject.org> - 3.7.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_36_Mass_Rebuild
 
 * Wed Jan 12 2022 Remi Collet <remi@remirepo.net> - 3.7.0-1
 - update to 3.7.0
 
 * Thu Nov 18 2021 Remi Collet <remi@remirepo.net> - 3.6.0-1
 - update to 3.6.0
+- drop patch merged upstream
 
-* Mon Sep 28 2020 Remi Collet <remi@remirepo.net> - 3.4.4-13
-- add patch for test suite with PHP 8 from
-  https://github.com/Imagick/imagick/pull/350 - simpler warning
+* Thu Oct 28 2021 Remi Collet <remi@remirepo.net> - 3.5.1-3
+- rebuild for https://fedoraproject.org/wiki/Changes/php81
 
-* Fri Sep  4 2020 Remi Collet <remi@remirepo.net> - 3.4.4-12
-- add patches for PHP 8 from upstream and
-  https://github.com/Imagick/imagick/pull/346 - SPL always there
-  https://github.com/Imagick/imagick/pull/347 - thread limit per request
-  https://github.com/Imagick/imagick/pull/348 - single thread
+* Fri Oct 15 2021 Remi Collet <remi@remirepo.net> - 3.5.1-2
+- fix #457 failed test with ImageMagick 6.9.12-23
+  using patch from https://github.com/Imagick/imagick/pull/458
+
+* Fri Jul 23 2021 Remi Collet <remi@remirepo.net> - 3.5.1-1
+- update to 3.5.1
+
+* Fri Jul 23 2021 Fedora Release Engineering <releng@fedoraproject.org> - 3.5.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_35_Mass_Rebuild
+
+* Fri Jun 18 2021 Remi Collet <remi@remirepo.net> - 3.5.0-1
+- update to 3.5.0
+- drop all patches merged upstream
+- run test suite in parallel
+- add new options in configuration file
+
+* Thu Mar  4 2021 Remi Collet <remi@remirepo.net> - 3.4.4-7
+- rebuild for https://fedoraproject.org/wiki/Changes/php80
+
+* Wed Jan 27 2021 Fedora Release Engineering <releng@fedoraproject.org> - 3.4.4-6
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
+
+* Tue Jul 28 2020 Fedora Release Engineering <releng@fedoraproject.org> - 3.4.4-5
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
+
+* Thu Jan 30 2020 Fedora Release Engineering <releng@fedoraproject.org> - 3.4.4-4
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_32_Mass_Rebuild
+
+* Thu Oct 03 2019 Remi Collet <remi@remirepo.net> - 3.4.4-3
+- rebuild for https://fedoraproject.org/wiki/Changes/php74
+
+* Fri Jul 26 2019 Fedora Release Engineering <releng@fedoraproject.org> - 3.4.4-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild
 
 * Tue May  7 2019 Remi Collet <remi@remirepo.net> - 3.4.4-1
 - update to 3.4.4
 - drop patch merged upstream
 
-* Wed Aug  8 2018 Alexander Ursu <alexander.ursu@gmail.com> - 3.4.3-2
-- Build for CentOS
+* Sat Feb 02 2019 Fedora Release Engineering <releng@fedoraproject.org> - 3.4.3-11
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_30_Mass_Rebuild
+
+* Thu Oct 11 2018 Remi Collet <remi@remirepo.net> - 3.4.3-10
+- Rebuild for https://fedoraproject.org/wiki/Changes/php73
+
+* Tue Aug 28 2018 Michael Cronenworth <mike@cchtml.com> - 3.4.3-9
+- Rebuild for ImageMagick 6.9.10
+
+* Fri Jul 13 2018 Fedora Release Engineering <releng@fedoraproject.org> - 3.4.3-8
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_29_Mass_Rebuild
+
+* Fri Feb 09 2018 Igor Gnatenko <ignatenkobrain@fedoraproject.org> - 3.4.3-7
+- Escape macros in %%changelog
+
+* Fri Feb 09 2018 Fedora Release Engineering <releng@fedoraproject.org> - 3.4.3-6
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+
+* Mon Jan 29 2018 Remi Collet <remi@remirepo.net> - 3.4.3-5
+- undefine _strict_symbol_defs_build
+- use patch from https://github.com/mkoppanen/imagick/pull/221
+
+* Tue Oct 03 2017 Remi Collet <remi@fedoraproject.org> - 3.4.3-4
+- rebuild for https://fedoraproject.org/wiki/Changes/php72
+
+* Tue Sep 05 2017 Adam Williamson <awilliam@redhat.com> - 3.4.3-3
+- Rebuild for ImageMagick 6 reversion
+
+* Thu Aug 24 2017 Remi Collet <remi@remirepo.net> - 3.4.3-2
+- rebuild for new ImageMagick
 
 * Mon Aug 14 2017 Remi Collet <remi@remirepo.net> - 3.4.3-1
 - update to 3.4.3
@@ -353,8 +419,8 @@ cd ../ZTS
 - All modifications in this release inspired by Fedora review by Remi Collet.
 - Add versions to BR for php-devel and ImageMagick-devel
 - Remove -n option from %%setup which was excessive with -c
-- Module install/uninstall actions surround with %%if 0%{?pecl_(un)?install:1} ... %%endif
-- Add Provides: php-pecl(%peclName) = %{version}
+- Module install/uninstall actions surround with %%if 0%%{?pecl_(un)?install:1} ... %%endif
+- Add Provides: php-pecl(%%peclName) = %%{version}
 
 * Sat Jan 3 2009 Pavel Alexeev <Pahan [ at ] Hubbitus [ DOT ] spb [ dOt.] su> - 2.2.1-2
 - License changed to PHP (thanks to Remi Collet)
