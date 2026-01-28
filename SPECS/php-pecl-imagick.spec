@@ -2,16 +2,18 @@
 %global pie_proj   imagick
 %global pecl_name  imagick
 %global ini_name   40-%{pecl_name}.ini
-%global with_zts   0%{?__ztsphp:1}
+%global sources    %{pecl_name}-%{version}
 
 Summary:        Provides a wrapper to the ImageMagick library
 Name:           php-pecl-%pecl_name
-Version:        3.8.0
-Release:        1%{?dist}
+Version:        3.8.1
+Release:        2%{?dist}
 License:        PHP-3.01
 URL:            https://pecl.php.net/package/%pecl_name
 
-Source0:        https://pecl.php.net/get/%pecl_name-%{version}%{?prever}.tgz
+Source0:        https://pecl.php.net/get/%{sources}.tgz
+
+ExcludeArch:    %{ix86}
 
 BuildRequires:  php-pear
 BuildRequires:  php-devel
@@ -20,10 +22,13 @@ BuildRequires:  pkgconfig(ImageMagick)
 Requires:       php(zend-abi) = %{php_zend_api}
 Requires:       php(api) = %{php_core_api}
 
+# Extension
 Provides:       php-%pecl_name                   = %{version}
 Provides:       php-%pecl_name%{?_isa}           = %{version}
+# PECL
 Provides:       php-pecl(%pecl_name)             = %{version}
 Provides:       php-pecl(%pecl_name)%{?_isa}     = %{version}
+# PIE
 Provides:       php-pie(%{pie_vend}/%{pie_proj}) = %{version}
 Provides:       php-%{pie_vend}-%{pie_proj}      = %{version}
 
@@ -46,7 +51,6 @@ These are the files needed to compile programs using %{pecl_name} extension.
 
 %prep
 %setup -qc
-mv %{pecl_name}-%{version}%{?prever} NTS
 
 # don't install any font (and test using it)
 # don't install empty file (d41d8cd98f00b204e9800998ecf8427e)
@@ -61,7 +65,7 @@ then : "Font files detected!"
      exit 1
 fi
 
-cd NTS
+cd %{sources}
 : Avoid arginfo to be regenerated
 rm *.stub.php
 
@@ -95,54 +99,43 @@ imagick.skip_version_check=1
 ;imagick.allow_zero_dimension_images => 0 => 0
 EOF
 
-%if %{with_zts}
-cp -r NTS ZTS
-%endif
-
 
 %build
-: Standard NTS build
-cd NTS
-%{_bindir}/phpize
-%configure --with-imagick=%{prefix} --with-php-config=%{_bindir}/php-config
-make %{?_smp_mflags}
+cd %{sources}
 
-%if %{with_zts}
-cd ../ZTS
-: ZTS build
-%{_bindir}/zts-phpize
-%configure --with-imagick=%{prefix} --with-php-config=%{_bindir}/zts-php-config
-make %{?_smp_mflags}
-%endif
+: Standard build
+%{__phpize}
+sed -e 's/INSTALL_ROOT/DESTDIR/' -i build/Makefile.global
+
+%configure --with-imagick=%{prefix} --with-php-config=%{__phpconfig}
+
+%make_build
 
 
 %install
-make install INSTALL_ROOT=%{buildroot} -C NTS
+cd %{sources}
+: Install the extension
+%make_install
 
-# Drop in the bit of configuration
-install -D -m 644 %{ini_name} %{buildroot}%{php_inidir}/%{ini_name}
+: Drop in the bit of configuration
+install -D -m 644 ../%{ini_name} %{buildroot}%{php_inidir}/%{ini_name}
 
-# Install XML package description
-install -D -p -m 644 package.xml %{buildroot}%{pecl_xmldir}/%{name}.xml
+: Install XML package description
+install -D -p -m 644 ../package.xml %{buildroot}%{pecl_xmldir}/%{name}.xml
 
-%if %{with_zts}
-make install INSTALL_ROOT=%{buildroot} -C ZTS
-install -D -m 644 %{ini_name} %{buildroot}%{php_ztsinidir}/%{ini_name}
-%endif
-
-# Test & Documentation
-cd NTS
+: Install Test and Documentation
 for i in $(grep 'role="test"' ../package.xml | sed -e 's/^.*name="//;s/".*$//')
-do [ -f $i ]          && install -Dpm 644 $i          %{buildroot}%{pecl_testdir}/%{pecl_name}/$i
+do [ -f $i ] && install -Dpm 644 $i %{buildroot}%{pecl_testdir}/%{pecl_name}/$i
 done
 for i in $(grep 'role="doc"' ../package.xml | sed -e 's/^.*name="//;s/".*$//')
-do [ -f $i ]          &&  install -Dpm 644 $i          %{buildroot}%{pecl_docdir}/%{pecl_name}/$i
+do [ -f $i ] && install -Dpm 644 $i %{buildroot}%{pecl_docdir}/%{pecl_name}/$i
 done
 
 
 %check
-: simple module load test for NTS extension
-cd NTS
+cd %{sources}
+
+: simple module load test for the extension
 %{__php} --no-php-ini \
     --define extension=%{buildroot}%{php_extdir}/%{pecl_name}.so \
     --modules | grep '^%{pecl_name}$'
@@ -155,45 +148,67 @@ rm tests/073_Imagick_forwardFourierTransformImage_basic.phpt
 rm tests/086_Imagick_forwardFourierTransformImage_basic.phpt
 rm tests/151_Imagick_subImageMatch_basic.phpt
 rm tests/316_Imagick_getImageKurtosis.phpt
+# change in 7.1.2
+# see https://github.com/Imagick/imagick/issues/737
+rm tests/024-ispixelsimilar.phpt
 
-: upstream test suite for NTS extension
+: upstream test suite for the extension
 TEST_PHP_ARGS="-n -d extension=%{buildroot}%{php_extdir}/%{pecl_name}.so" \
 %{__php} -n run-tests.php -q --show-diff %{?_smp_mflags}
 
-%if %{with_zts}
-: simple module load test for ZTS extension
-cd ../ZTS
-%{__ztsphp} --no-php-ini \
-    --define extension=%{buildroot}%{php_ztsextdir}/%{pecl_name}.so \
-    --modules | grep '^%{pecl_name}$'
-%endif
-
 
 %files
+%license %{sources}/LICENSE
 %doc %{pecl_docdir}/%{pecl_name}
 %{pecl_xmldir}/%{name}.xml
 
 %config(noreplace) %{php_inidir}/%{ini_name}
 %{php_extdir}/%{pecl_name}.so
 
-%if %{with_zts}
-%config(noreplace) %{php_ztsinidir}/%{ini_name}
-%{php_ztsextdir}/%{pecl_name}.so
-%endif
-
 
 %files devel
 %doc %{pecl_testdir}/%{pecl_name}
 %{php_incldir}/ext/%{pecl_name}
 
-%if %{with_zts}
-%{php_ztsincldir}/ext/%{pecl_name}
-%endif
-
 
 %changelog
+* Sat Jan 17 2026 Fedora Release Engineering <releng@fedoraproject.org> - 3.8.1-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_44_Mass_Rebuild
+
+* Thu Nov 27 2025 Remi Collet <remi@remirepo.net> - 3.8.1-1
+- update to 3.8.1
+- drop patch merged upstream
+
+* Wed Sep 17 2025 Remi Collet <remi@remirepo.net> - 3.8.0-3
+- rebuild for https://fedoraproject.org/wiki/Changes/php85
+- fix for PHP 8.5.0alpha3 using patch from
+  https://github.com/Imagick/imagick/pull/741
+- ignore 1 test failing with IM 7.1.2 reported as
+  https://github.com/Imagick/imagick/issues/737
+
+* Fri Jul 25 2025 Fedora Release Engineering <releng@fedoraproject.org> - 3.8.0-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_43_Mass_Rebuild
+
 * Fri Apr 11 2025 Remi Collet <remi@remirepo.net> - 3.8.0-1
 - update to 3.8.0
+
+* Sat Jan 18 2025 Fedora Release Engineering <releng@fedoraproject.org> - 3.7.0-16
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_42_Mass_Rebuild
+
+* Tue Oct 22 2024 Remi Collet <remi@fedoraproject.org> - 3.7.0-15
+- modernize the spec file
+
+* Mon Oct 14 2024 Remi Collet <remi@fedoraproject.org> - 3.7.0-14
+- rebuild for https://fedoraproject.org/wiki/Changes/php84
+- add patch for PHP 8.4 from
+  https://github.com/Imagick/imagick/pull/690
+
+* Fri Jul 19 2024 Fedora Release Engineering <releng@fedoraproject.org> - 3.7.0-13
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_41_Mass_Rebuild
+
+* Tue Apr 16 2024 Remi Collet <remi@remirepo.net> - 3.7.0-12
+- drop 32-bit support
+  https://fedoraproject.org/wiki/Changes/php_no_32_bit
 
 * Mon Jan 29 2024 Remi Collet <remi@remirepo.net> - 3.7.0-11
 - ignore 1 test failing with recent ImageMagick version
